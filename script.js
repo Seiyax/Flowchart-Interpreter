@@ -2,7 +2,7 @@
    VISUAL PSEUDOPLAY — COMBINED SCRIPT
    (FEAT: Auto-Sizing Shapes, Fixed Text Wrap, Modal Labels, Ctrl+Zoom)
    (MODS: Connector Edit, Copy/Paste, Ctrl+Z/Y/C/V, Offset Ports, Auto-Width, Max-Width, Char-Wrap, Single Port Out, Modal Lag Fix, Interpreter Fix)
-   (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch Controls)
+   (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch, Mobile Terminal)
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const guidesLayer = $('#guides-layer');
   const canvasContainer = $('#canvas-container');
   const terminal = $('#terminal');
+  const terminalPanel = $('#terminalPanel');
   const modal = $('#shapeEditorModal');
   const modalInput = $('#shapeTextInput');
   const zoomDisplay = $('#zoomResetBtn');
@@ -339,6 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderShape(shape) {
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.classList.add('flowchart-shape');
+      g.dataset.shapeId = shape.id; // <-- ADD THIS LINE
       if (this.selected.has(shape.id)) g.classList.add('selected');
       if (this.activeShape === shape.id) g.classList.add('active');
       g.setAttribute('transform', `translate(${shape.x},${shape.y})`);
@@ -1390,7 +1392,7 @@ document.addEventListener('DOMContentLoaded', () => {
       this.setTheme(!document.documentElement.classList.contains('dark'));
     },
 
-    // --- NEW: Touch Handler Functions ---
+    // --- NEW: Touch Handler Functions (Fix for Drag/Pan) ---
     
     onTouchStart(e) {
         if (isRunning) return;
@@ -1416,23 +1418,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.renderHandles();
             }
 
-        } else if (e.touches.length === 1 && e.target === canvasContainer) {
-            // --- ONE-FINGER PAN START ---
-            // Only pan if touching the canvas background
-            e.preventDefault(); // Prevent page scroll
-            const touch = e.touches[0];
+        } else if (e.touches.length === 1) {
+            // --- ONE-FINGER START ---
+            const targetEl = e.target;
             
-            this.panning = true;
-            this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
-            
-            if (this.flow.selected.size > 0) {
-                this.flow.selected.clear();
-                this.flow.render();
-                this.renderHandles();
+            if (targetEl.closest('.connector-port') || 
+                targetEl.closest('.resize-handle') || 
+                targetEl.closest('.flowchart-shape')) {
+                // Tapped an interactive item. Let the browser simulate mousedown/click.
+                // We MUST NOT call preventDefault() here, or it breaks simulation.
+                
+                // But we must also not start panning.
+                this.panning = false; 
+            } else {
+                // --- Tapped the BACKGROUND, start panning ---
+                e.preventDefault(); // Prevent page scroll
+                const touch = e.touches[0];
+                
+                this.panning = true;
+                this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
+                
+                if (this.flow.selected.size > 0) {
+                    this.flow.selected.clear();
+                    this.flow.render();
+                    this.renderHandles();
+                }
             }
         }
-        // If 1 touch on a shape/port, we do NOT preventDefault.
-        // We let the browser simulate mousedown/click, which our app already handles.
     },
 
     onTouchMove(e) {
@@ -1467,12 +1479,21 @@ document.addEventListener('DOMContentLoaded', () => {
             this.flow.render();
             this.renderHandles();
 
-        } else if (e.touches.length === 1 && this.panning) {
-            // --- ONE-FINGER PAN MOVE ---
-            e.preventDefault(); // Prevent page scroll
-            this.onMouseMove(e.touches[0]); 
+        } else if (e.touches.length === 1) {
+            // --- ONE-FINGER MOVE ---
+            
+            if (this.panning) {
+                // We are manually panning
+                e.preventDefault(); // Prevent page scroll
+                this.onMouseMove(e.touches[0]); 
+            } else if (this.dragging || this.resizing || this.connectorStart) {
+                // We are dragging/resizing (started by simulated mousedown)
+                // We MUST preventDefault to stop the browser from scrolling.
+                e.preventDefault();
+                this.onMouseMove(e.touches[0]);
+            }
+            // If none of these flags are true, we let the browser scroll the page.
         }
-        // If 1 touch and dragging a shape, browser simulates mousemove.
     },
 
     onTouchEnd(e) {
@@ -1483,11 +1504,17 @@ document.addEventListener('DOMContentLoaded', () => {
             this.lastPinchDist = null;
         }
 
-        if (this.panning && e.touches.length === 0) {
-            // Last finger lifted
-            this.onMouseUp(e.changedTouches[0]);
+        // We need to manually call onMouseUp if we were in a state
+        // that was being driven by onTouchMove.
+        if ((this.panning || this.dragging || this.resizing || this.connectorStart) && e.touches.length === 0) {
+            // Check if changedTouches exists before accessing
+            if (e.changedTouches && e.changedTouches.length > 0) {
+                this.onMouseUp(e.changedTouches[0]);
+            } else {
+                // Fallback if changedTouches is not available
+                this.onMouseUp(e);
+            }
         }
-        // Let browser simulate mouseup for dragging/connecting
     }
     // --- END NEW Touch Handlers ---
     
@@ -1537,6 +1564,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     clearTerminal() {
       terminal.innerHTML = '';
+      // Hide terminal on mobile when user clears it
+      if (window.innerWidth <= 1024) {
+        terminalPanel.classList.add('hidden-mobile');
+      }
     },
     
     evalExpr(expr) {
@@ -1579,6 +1610,8 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     
     async startRun() {
+      terminalPanel.classList.remove('hidden-mobile'); // Show the terminal
+      
       if (isRunning) return;
       const startShape = ui.flow.getStartShape();
       if (!startShape) {
@@ -1590,7 +1623,7 @@ document.addEventListener('DOMContentLoaded', () => {
       controlStack = [];
       iterationCount = 0;
       let lastShapeId = null;
-      this.clearTerminal();
+      this.clearTerminal(); // This will not hide it, as isRunning is now true
       this.appendLine("Execution started...", "system");
       currentShapeId = startShape.id;
       ui.flow.activeConnector = null; // Reset connector at start
@@ -1649,9 +1682,14 @@ document.addEventListener('DOMContentLoaded', () => {
       ui.flow.activeShape = null;
       ui.flow.activeConnector = null; 
       ui.flow.render();
+
       if (terminal.querySelector('.input-field')) {
         this.appendLine("Execution stopped by user.", "system");
-        this.clearTerminal();
+      }
+      
+      // Hide terminal on mobile when run finishes/stops
+      if (window.innerWidth <= 1024) {
+        terminalPanel.classList.add('hidden-mobile');
       }
     },
     
