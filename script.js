@@ -1532,24 +1532,22 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
         // ─────────────────────────────────────────────────────────────────────
-    //  CANVA‑STYLE LONG‑PRESS → PICK‑UP & DRAG  (perfect on every press)
+    //  CANVA-STYLE: LONG-PRESS → PICK UP & DRAG (NO RESIZE HANDLES)
     // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
 
-      // ── 2‑finger pinch‑zoom ───────────────────────────────────────
+      // ── 2-finger pinch-zoom ───────────────────────────────────────
       if (e.touches.length === 2) {
         e.preventDefault();
         this.isPinching = true;
         this.dragging = this.panning = this.resizing = this.isPortDragging = false;
         clearTimeout(this.longPressTimer);
         this.longPressTimer = this.touchStartTarget = null;
-
         this.lastPinchDist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
         );
-
         if (this.connectorStart) {
           this.connectorStart = null;
           tempLayer.innerHTML = '';
@@ -1559,7 +1557,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // ── 1‑finger ─────────────────────────────────────────────────────
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
       const el = e.target;
@@ -1577,9 +1574,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 2. Resize handle
+      // 2. Resize handle (only if already selected)
       const handle = el.closest('.resize-handle');
-      if (handle) {
+      if (handle && this.flow.selected.size === 1) {
         e.preventDefault();
         this.panning = false;
         this.resizing = true;
@@ -1590,7 +1587,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 3. Shape → long‑press → **pick‑up**
+      // 3. Shape → LONG-PRESS = PICK UP & DRAG (NO HANDLES)
       const shapeG = el.closest('.flowchart-shape');
       if (shapeG) {
         e.preventDefault();
@@ -1606,28 +1603,29 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!this.touchStartTarget) return;
           const { shapeId } = this.touchStartTarget;
 
-          // haptic
+          // HAPTIC
           if (navigator.vibrate) navigator.vibrate(40);
 
-          // ---- PICK‑UP ------------------------------------------------
+          // PICK UP
           this.dragging = true;
           this.dragShapeId = shapeId;
-          this.dragOffset = null;               // will be set on first move
+          this.dragOffset = null;
 
-          // select (no handles yet)
+          // SELECT BUT DO NOT SHOW HANDLES
           this.flow.select(shapeId, false);
+          handlesLayer.innerHTML = ''; // CRITICAL: HIDE HANDLES
 
-          // visual lift – Canva style
+          // VISUAL LIFT
           const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
           if (g) {
             g.style.transition = 'transform .12s ease-out, box-shadow .12s';
             g.style.transform = 'translateY(-6px) scale(1.04)';
-            g.style.boxShadow = '0 12px 24px rgba(0,0,0,0.2)';
+            g.style.boxShadow = '0 12px 24px rgba(0,0,0,0.25)';
           }
 
           this.touchStartTarget = null;
           this.longPressTimer = null;
-        }, 400); // 400 ms
+        }, 400);
 
         return;
       }
@@ -1642,24 +1640,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 5. Background → add shape or pan
+      // 5. Background → pan
       if (this.tool === 'shape') return;
-
-      // 6. Pan canvas
       e.preventDefault();
       this.panning = true;
       this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
       if (this.flow.selected.size) {
         this.flow.selected.clear();
         this.flow.render();
-        this.renderHandles();
+        handlesLayer.innerHTML = '';
       }
     },
 
     onTouchMove(e) {
       if (isRunning) return;
 
-      // ── Pinch‑zoom ───────────────────────────────────────────────────
+      // Pinch-zoom
       if (e.touches.length === 2 && this.isPinching) {
         e.preventDefault();
         const newDist = Math.hypot(
@@ -1683,27 +1679,22 @@ document.addEventListener('DOMContentLoaded', () => {
         this.flow.view.zoom = newZoom;
 
         this.flow.render();
-        this.renderHandles();
         return;
       }
 
-      // ── Single finger ───────────────────────────────────────────────
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
 
-      // ---- 1. Initialise offset on FIRST move after pickup ----
+      // FIRST MOVE AFTER PICKUP
       if (this.dragging && this.dragShapeId && this.dragOffset === null) {
         const pt = this.getPoint(touch);
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
           this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
         }
-        // clear any old handles & draw fresh ones at the correct spot
-        handlesLayer.innerHTML = '';
-        this.renderHandles();
       }
 
-      // ---- 2. DRAG SHAPE (smooth follow) ----
+      // DRAG SHAPE
       if (this.dragging && this.dragShapeId && this.dragOffset !== null) {
         e.preventDefault();
         const pt = this.getPoint(touch);
@@ -1714,41 +1705,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
         this.renderGuides(shape);
         this.flow.render();
-        this.renderHandles();   // keep handles glued
         return;
       }
 
-      // ---- 3. PAN CANVAS ----
+      // PAN
       if (this.panning) {
         e.preventDefault();
         this.flow.view.x = touch.clientX - this.panStart.x;
         this.flow.view.y = touch.clientY - this.panStart.y;
         this.flow.render();
-        this.renderHandles();
       }
     },
 
     onTouchEnd(e) {
       if (isRunning) return;
 
-      // ── Pinch end ───────────────────────────────────────────────────
       if (this.isPinching && e.touches.length < 2) {
         this.isPinching = false;
         this.lastPinchDist = null;
       }
 
-      // ── Long‑press tap (timer still alive) ───────────────────────────
+      // TAP (not long-press)
       if (this.longPressTimer) {
         clearTimeout(this.longPressTimer);
         this.longPressTimer = null;
         if (this.touchStartTarget) {
-          this.flow.select(this.touchStartTarget.shapeId, false);
-          this.renderHandles();
+          const { shapeId } = this.touchStartTarget;
+          this.flow.select(shapeId, false);
+          this.renderHandles(); // SHOW HANDLES ON TAP
           this.touchStartTarget = null;
         }
       }
 
-      // ── Connector port tap ───────────────────────────────────────────
+      // Connector port tap
       const port = e.target.closest('.connector-port');
       if (port && !this.isPortDragging && !this.dragging && !this.resizing && !this.panning) {
         e.preventDefault();
@@ -1765,7 +1754,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // ── Finalise drag (snap + save) ─────────────────────────────────
+      // DROP SHAPE
       if (this.dragging && this.dragShapeId) {
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
@@ -1775,22 +1764,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         this.clearGuides();
 
-        // remove lift effect
+        // Remove lift
         const g = document.querySelector(`[data-shape-id="${this.dragShapeId}"]`);
         if (g) {
           g.style.transition = '';
           g.style.transform = '';
           g.style.boxShadow = '';
         }
+
+        // SHOW HANDLES AFTER DROP
+        this.renderHandles();
       }
 
-      // ── Reset flags ─────────────────────────────────────────────────
+      // Reset
       this.dragging = this.dragShapeId = this.dragOffset = null;
       this.panning = this.resizing = this.isPortDragging = false;
       this.touchStartTarget = null;
       canvasContainer.style.cursor = 'grab';
     }
-    // ─────────────────────────────────────────────────────────────────────
     // --- END REVISED Touch Handlers ---
     
   };
