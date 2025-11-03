@@ -1468,26 +1468,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.panning = false;
                 this.touchStartTarget = { touch, shapeId: shape.dataset.shapeId, x: touch.clientX, y: touch.clientY };
 
-            this.longPressTimer = setTimeout(() => {
-    if (this.touchStartTarget) {
+          this.longPressTimer = setTimeout(() => {
+    if (!this.touchStartTarget) return;
 
-        // ✅ Vibrate feedback
-        if (navigator.vibrate) navigator.vibrate(30);
+    const { touch, shapeId } = this.touchStartTarget;
 
-        const { touch, shapeId } = this.touchStartTarget;
-        this.onShapeMouseDown(touch, shapeId); // select + prepare drag
+    // Vibrate
+    if (navigator.vibrate) navigator.vibrate(30);
 
-        // ✅ Enable dragging on touch
-        this.dragging = true;
-        this.dragShapeId = shapeId;
-        const pt = this.getPoint(touch);
-        const shape = this.flow.getShape(shapeId);
-        this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
+    this.dragging = true;
+    this.dragShapeId = shapeId;
 
-        this.touchStartTarget = null;
-        this.longPressTimer = null;
-    }
+    // Select shape
+    this.onShapeMouseDown(touch, shapeId);
+
+    // ✅ Calculate drag offset based on touch → SVG coordinates
+    const pt = this.getPoint(touch);
+    const shape = this.flow.getShape(shapeId);
+    this.dragOffset = { 
+        x: pt.x - shape.x, 
+        y: pt.y - shape.y 
+    };
+
+    this.touchStartTarget = null;
+    this.longPressTimer = null;
 }, 350);
+
 
 
                 return;
@@ -1585,17 +1591,22 @@ if (e.touches.length === 1) {
 
     // ✅ FIRST PRIORITY: dragging shape
     if (this.dragging && this.dragShapeId) {
-        e.preventDefault();
-        this.onMouseMove(touch);
-        return;
-    }
+    e.preventDefault();
 
-    // ✅ SECOND: panning canvas
-    if (this.panning) {
-        e.preventDefault();
-        this.onMouseMove(touch);
-        return;
-    }
+    const touch = e.touches[0];
+    const pt = this.getPoint(touch);
+
+    const shape = this.flow.getShape(this.dragShapeId);
+
+    // ✅ Direct follow finger
+    shape.x = pt.x - this.dragOffset.x;
+    shape.y = pt.y - this.dragOffset.y;
+
+    this.flow.render();
+    this.renderHandles();
+    return;
+}
+
 }
 
     },
