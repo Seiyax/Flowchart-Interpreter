@@ -1532,18 +1532,18 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
         // ─────────────────────────────────────────────────────────────────────
-    //  INSTANT DRAG ON LONG-PRESS — CANVA STYLE (WORKS FIRST TIME)
+    //  TRUE CANVA DRAG: WORKS ON FIRST PRESS — NO JUMP, NO GHOST HANDLES
     // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
 
-      // 2-FINGER PINCH ZOOM
+      // === 2-FINGER PINCH ZOOM ===
       if (e.touches.length === 2) {
         e.preventDefault();
         this.isPinching = true;
         this.dragging = this.panning = this.resizing = this.isPortDragging = false;
         clearTimeout(this.longPressTimer);
-        this.longPressTimer = this.touchStartTarget = null;
+        this.longPressTimer = null;
 
         this.lastPinchDist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
@@ -1562,7 +1562,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const touch = e.touches[0];
       const el = e.target;
 
-      // 1. PORT
+      // === PORT ===
       const port = el.closest('.connector-port');
       if (port) {
         e.preventDefault();
@@ -1575,7 +1575,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 2. RESIZE HANDLE (only if already selected)
+      // === RESIZE HANDLE ===
       const handle = el.closest('.resize-handle');
       if (handle && this.flow.selected.size === 1) {
         e.preventDefault();
@@ -1588,28 +1588,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 3. SHAPE → LONG-PRESS = INSTANT DRAG (NO HANDLES)
+      // === SHAPE → LONG-PRESS = DRAG (NO SELECTION, NO HANDLES) ===
       const shapeG = el.closest('.flowchart-shape');
       if (shapeG) {
         e.preventDefault();
         this.panning = false;
 
         const shapeId = shapeG.dataset.shapeId;
+        const pt = this.getPoint(touch);
+        const shape = this.flow.getShape(shapeId);
+
+        if (!shape) return;
+
+        // === PRE-COMPUTE OFFSET ON TOUCH START ===
+        this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
+        this.dragShapeId = shapeId;
+        this.dragging = false; // will activate after long-press
 
         this.longPressTimer = setTimeout(() => {
-          // HAPTIC
           if (navigator.vibrate) navigator.vibrate(40);
 
-          // START DRAG IMMEDIATELY
           this.dragging = true;
-          this.dragShapeId = shapeId;
-          this.dragOffset = null; // set on first move
 
-          // SELECT + HIDE HANDLES
-          this.flow.select(shapeId, false);
-          handlesLayer.innerHTML = ''; // CRITICAL
+          // HIDE ALL HANDLES
+          handlesLayer.innerHTML = '';
 
-          // LIFT ANIMATION
+          // LIFT VISUAL
           const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
           if (g) {
             g.style.transition = 'transform .1s ease-out, box-shadow .1s';
@@ -1617,13 +1621,16 @@ document.addEventListener('DOMContentLoaded', () => {
             g.style.boxShadow = '0 12px 24px rgba(0,0,0,0.25)';
           }
 
+          // SELECT ONLY (NO renderHandles)
+          this.flow.select(shapeId, false);
+
           this.longPressTimer = null;
-        }, 380); // 380ms = natural
+        }, 380);
 
         return;
       }
 
-      // 4. CONNECTOR LINE
+      // === CONNECTOR LINE ===
       const conn = el.closest('.connector-group');
       if (conn && conn.dataset.connId) {
         e.preventDefault();
@@ -1633,7 +1640,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 5. PAN
+      // === PAN ===
       if (this.tool === 'shape') return;
       e.preventDefault();
       this.panning = true;
@@ -1648,7 +1655,7 @@ document.addEventListener('DOMContentLoaded', () => {
     onTouchMove(e) {
       if (isRunning) return;
 
-      // PINCH ZOOM
+      // === PINCH ZOOM ===
       if (e.touches.length === 2 && this.isPinching) {
         e.preventDefault();
         const newDist = Math.hypot(
@@ -1678,16 +1685,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
 
-      // FIRST MOVE AFTER PICKUP → SET OFFSET
-      if (this.dragging && this.dragShapeId && this.dragOffset === null) {
-        const pt = this.getPoint(touch);
-        const shape = this.flow.getShape(this.dragShapeId);
-        if (shape) {
-          this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
-        }
-      }
-
-      // DRAG SHAPE — SMOOTH & IMMEDIATE
+      // === DRAG SHAPE (OFFSET ALREADY SET) ===
       if (this.dragging && this.dragShapeId && this.dragOffset !== null) {
         e.preventDefault();
         const pt = this.getPoint(touch);
@@ -1701,11 +1699,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // PAN
+      // === PAN ===
       if (this.panning) {
         e.preventDefault();
         this.flow.view.x = touch.clientX - this.panStart.x;
-        this.flow.view.y = touch.clientClientY - this.panStart.y;
+        this.flow.view.y = touch.clientY - this.panStart.y;
         this.flow.render();
       }
     },
@@ -1713,23 +1711,24 @@ document.addEventListener('DOMContentLoaded', () => {
     onTouchEnd(e) {
       if (isRunning) return;
 
+      // === PINCH END ===
       if (this.isPinching && e.touches.length < 2) {
         this.isPinching = false;
         this.lastPinchDist = null;
       }
 
-      // TAP (NOT LONG-PRESS)
+      // === TAP (NOT LONG-PRESS) ===
       if (this.longPressTimer) {
         clearTimeout(this.longPressTimer);
         this.longPressTimer = null;
         const shapeG = e.target.closest('.flowchart-shape');
         if (shapeG) {
           this.flow.select(shapeG.dataset.shapeId, false);
-          this.renderHandles(); // SHOW HANDLES ON TAP
+          this.renderHandles();
         }
       }
 
-      // PORT TAP
+      // === PORT TAP ===
       const port = e.target.closest('.connector-port');
       if (port && !this.isPortDragging && !this.dragging && !this.resizing && !this.panning) {
         e.preventDefault();
@@ -1746,7 +1745,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // DROP SHAPE
+      // === DROP SHAPE ===
       if (this.dragging && this.dragShapeId) {
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
@@ -1768,7 +1767,7 @@ document.addEventListener('DOMContentLoaded', () => {
         this.renderHandles();
       }
 
-      // RESET
+      // === RESET ===
       this.dragging = this.dragShapeId = this.dragOffset = null;
       this.panning = this.resizing = this.isPortDragging = false;
       canvasContainer.style.cursor = 'grab';
