@@ -1532,7 +1532,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
         // ─────────────────────────────────────────────────────────────────────
-    //  REVISED TOUCH HANDLERS – LONG-PRESS → DRAG (works on every device)
+    //  CANVA-STYLE LONG-PRESS → DRAG (smooth, no jump, grid-snap on drop)
     // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
@@ -1542,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         this.isPinching = true;
         this.dragging = this.panning = this.resizing = this.isPortDragging = false;
-        if (this.longPressTimer) clearTimeout(this.longPressTimer);
+        clearTimeout(this.longPressTimer);
         this.longPressTimer = this.touchStartTarget = null;
 
         this.lastPinchDist = Math.hypot(
@@ -1550,7 +1550,7 @@ document.addEventListener('DOMContentLoaded', () => {
           e.touches[0].clientY - e.touches[1].clientY
         );
 
-        // cancel any half-drawn connector
+        // cancel half-drawn connector
         if (this.connectorStart) {
           this.connectorStart = null;
           tempLayer.innerHTML = '';
@@ -1566,7 +1566,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const touch = e.touches[0];
       const el = e.target;
 
-      // 1. Connector port (tap or drag-to-connect)
+      // 1. Connector port
       const port = el.closest('.connector-port');
       if (port) {
         e.preventDefault();
@@ -1592,7 +1592,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 3. Shape body → long-press → drag
+      // 3. Shape → long-press → drag
       const shapeG = el.closest('.flowchart-shape');
       if (shapeG) {
         e.preventDefault();
@@ -1614,25 +1614,26 @@ document.addEventListener('DOMContentLoaded', () => {
           // pick-up
           this.dragging = true;
           this.dragShapeId = shapeId;
-          this.dragOffset = null;               // will be set on first move
+          this.dragOffset = null;               // calculated on first move
           this.flow.select(shapeId, false);
           this.renderHandles();
 
-          // visual lift (optional but nice)
+          // visual lift (Canva style)
           const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
           if (g) {
-            g.style.transition = 'transform .1s';
-            g.style.transform = 'translateY(-4px) scale(1.02)';
+            g.style.transition = 'transform .12s ease-out, box-shadow .12s';
+            g.style.transform = 'translateY(-6px) scale(1.04)';
+            g.style.boxShadow = '0 12px 24px rgba(0,0,0,0.2)';
           }
 
           this.touchStartTarget = null;
           this.longPressTimer = null;
-        }, 420); // 420 ms feels natural
+        }, 400); // 400 ms – feels natural
 
         return;
       }
 
-      // 4. Connector line → tap to select
+      // 4. Connector line → tap select
       const conn = el.closest('.connector-group');
       if (conn && conn.dataset.connId) {
         e.preventDefault();
@@ -1642,7 +1643,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 5. Background → add shape (tool = shape) or pan
+      // 5. Background → add shape or pan
       if (this.tool === 'shape') return; // let mousedown fire
 
       // 6. Pan canvas
@@ -1691,22 +1692,23 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
 
-      // ---- 1. Initialise drag offset on FIRST move after pickup ----
+      // ---- 1. Initialise offset on FIRST move after pickup ----
       if (this.dragging && this.dragShapeId && this.dragOffset === null) {
         const pt = this.getPoint(touch);
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
           this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
         }
+        // Do NOT return – continue to drag block below
       }
 
-      // ---- 2. DRAG SHAPE ------------------------------------------------
+      // ---- 2. DRAG SHAPE (Canva smooth follow) ----
       if (this.dragging && this.dragShapeId && this.dragOffset !== null) {
-        e.preventDefault();                     // stop page scroll / panning
+        e.preventDefault();                 // stop scroll / panning
         const pt = this.getPoint(touch);
         const shape = this.flow.getShape(this.dragShapeId);
 
-        // live move (no snap while dragging – feels smoother)
+        // live position – **no snap while dragging**
         shape.x = pt.x - this.dragOffset.x;
         shape.y = pt.y - this.dragOffset.y;
 
@@ -1716,7 +1718,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // ---- 3. PAN CANVAS ------------------------------------------------
+      // ---- 3. PAN CANVAS ----
       if (this.panning) {
         e.preventDefault();
         this.flow.view.x = touch.clientX - this.panStart.x;
@@ -1746,7 +1748,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // ── Connector port tap (click-to-connect) ───────────────────────
+      // ── Connector port tap ───────────────────────────────────────────
       const port = e.target.closest('.connector-port');
       if (port && !this.isPortDragging && !this.dragging && !this.resizing && !this.panning) {
         e.preventDefault();
@@ -1767,7 +1769,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (this.dragging && this.dragShapeId) {
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
-          // final grid snap
           shape.x = snapToGrid(shape.x);
           shape.y = snapToGrid(shape.y);
           this.flow.save();
@@ -1775,14 +1776,15 @@ document.addEventListener('DOMContentLoaded', () => {
         this.clearGuides();
 
         // remove lift effect
-        const g = document.querySelector(`[data-shape-id="${this.dragShapeId}"]`);
+        const g = document.querySelector(`[data-shape-id="${this.dragShapeId.}""]`);
         if (g) {
           g.style.transition = '';
           g.style.transform = '';
+          g.style.boxShadow = '';
         }
       }
 
-      // ── Reset all flags ─────────────────────────────────────────────
+      // ── Reset flags ─────────────────────────────────────────────────
       this.dragging = this.dragShapeId = this.dragOffset = null;
       this.panning = this.resizing = this.isPortDragging = false;
       this.touchStartTarget = null;
