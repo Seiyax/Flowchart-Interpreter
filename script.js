@@ -1532,7 +1532,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
         // ─────────────────────────────────────────────────────────────────────
-    //  DRAG ON FIRST LONG-PRESS — NO DOUBLE PRESS, NO JUMP
+    //  TRUE CANVA DRAG: FIRST PRESS → DRAG INSTANTLY
     // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
@@ -1541,6 +1541,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.touches.length === 2) {
         e.preventDefault();
         this.isPinching = true;
+        this.stopDragLoop();
         this.dragging = this.panning = this.resizing = this.isPortDragging = false;
         clearTimeout(this.longPressTimer);
         this.longPressTimer = null;
@@ -1595,24 +1596,21 @@ document.addEventListener('DOMContentLoaded', () => {
         this.panning = false;
 
         const shapeId = shapeG.dataset.shapeId;
-        const pt = this.getPoint(touch);
         const shape = this.flow.getShape(shapeId);
         if (!shape) return;
 
-        // PRE-COMPUTE OFFSET
+        const pt = this.getPoint(touch);
         this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
         this.dragShapeId = shapeId;
+        this.lastTouch = { x: touch.clientX, y: touch.clientY };
 
         this.longPressTimer = setTimeout(() => {
           if (navigator.vibrate) navigator.vibrate(40);
 
-          // ACTIVATE DRAG IMMEDIATELY
           this.dragging = true;
-
-          // HIDE HANDLES
+          this.flow.select(shapeId, false);
           handlesLayer.innerHTML = '';
 
-          // LIFT
           const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
           if (g) {
             g.style.transition = 'transform .1s ease-out, box-shadow .1s';
@@ -1620,9 +1618,8 @@ document.addEventListener('DOMContentLoaded', () => {
             g.style.boxShadow = '0 12px 24px rgba(0,0,0,0.25)';
           }
 
-          // SELECT (no handles)
-          this.flow.select(shapeId, false);
-
+          // START REAL-TIME DRAG LOOP
+          this.startDragLoop();
           this.longPressTimer = null;
         }, 380);
 
@@ -1649,6 +1646,39 @@ document.addEventListener('DOMContentLoaded', () => {
         this.flow.render();
         handlesLayer.innerHTML = '';
       }
+    },
+
+    // REAL-TIME DRAG LOOP (runs even if finger doesn't move)
+    startDragLoop() {
+      this.stopDragLoop();
+      const loop = () => {
+        if (!this.dragging || !this.dragShapeId) return;
+        const touch = this.lastTouch;
+        if (!touch) return;
+
+        const pt = this.getPointFromClient(touch.x, touch.y);
+        const shape = this.flow.getShape(this.dragShapeId);
+        if (shape) {
+          shape.x = pt.x - this.dragOffset.x;
+          shape.y = pt.y - this.dragOffset.y;
+          this.renderGuides(shape);
+          this.flow.render();
+        }
+        this.dragRaf = requestAnimationFrame(loop);
+      };
+      this.dragRaf = requestAnimationFrame(loop);
+    },
+
+    stopDragLoop() {
+      if (this.dragRaf) cancelAnimationFrame(this.dragRaf);
+      this.dragRaf = null;
+    },
+
+    getPointFromClient(clientX, clientY) {
+      const rect = canvasContainer.getBoundingClientRect();
+      const x = (clientX - rect.left - this.flow.view.x) / this.flow.view.zoom;
+      const y = (clientY - rect.top - this.flow.view.y) / this.flow.view.zoom;
+      return { x, y };
     },
 
     onTouchMove(e) {
@@ -1684,17 +1714,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
 
-      // DRAG — OFFSET ALREADY SET IN onTouchStart
-      if (this.dragging && this.dragShapeId && this.dragOffset) {
+      // UPDATE LAST TOUCH (for drag loop)
+      this.lastTouch = { x: touch.clientX, y: touch.clientY };
+
+      // DRAG (loop handles it)
+      if (this.dragging && this.dragShapeId) {
         e.preventDefault();
-        const pt = this.getPoint(touch);
-        const shape = this.flow.getShape(this.dragShapeId);
-
-        shape.x = pt.x - this.dragOffset.x;
-        shape.y = pt.y - this.dragOffset.y;
-
-        this.renderGuides(shape);
-        this.flow.render();
         return;
       }
 
@@ -1761,11 +1786,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         this.renderHandles();
+        this.stopDragLoop();
       }
 
       // RESET
       this.dragging = this.dragShapeId = this.dragOffset = null;
       this.panning = this.resizing = this.isPortDragging = false;
+      this.lastTouch = null;
       canvasContainer.style.cursor = 'grab';
     }
     // --- END REVISED Touch Handlers ---
