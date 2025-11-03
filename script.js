@@ -1532,7 +1532,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
         // ─────────────────────────────────────────────────────────────────────
-    //  CANVA‑STYLE LONG‑PRESS → DRAG  (no ghost handles, perfect follow)
+    //  CANVA‑STYLE LONG‑PRESS → DRAG  (no jump, no ghost handles)
     // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
@@ -1555,7 +1555,6 @@ document.addEventListener('DOMContentLoaded', () => {
           tempLayer.innerHTML = '';
           this.tool = 'select';
           this.updateToolbar();
-          this.renderHandles();               // <-- keep UI clean
         }
         return;
       }
@@ -1615,7 +1614,7 @@ document.addEventListener('DOMContentLoaded', () => {
           this.dragShapeId = shapeId;
           this.dragOffset = null;               // set on first move
 
-          // select (but **do NOT render handles here**)
+          // **select only – NO renderHandles() here**
           this.flow.select(shapeId, false);
 
           // visual lift (Canva style)
@@ -1699,9 +1698,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (shape) {
           this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
         }
-        // **NOW** render handles (they appear exactly where the shape is)
-        this.renderHandles();
-        // Do NOT return – continue to drag block
+
+        // **Clear old handles & draw fresh ones at the correct spot**
+        handlesLayer.innerHTML = '';
+        this.renderHandles();                 // <-- only here
       }
 
       // ---- 2. DRAG SHAPE (smooth follow) ----
@@ -1715,7 +1715,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         this.renderGuides(shape);
         this.flow.render();
-        this.renderHandles();          // keep handles glued to moving shape
+        this.renderHandles();                // keep handles glued
         return;
       }
 
@@ -1744,7 +1744,7 @@ document.addEventListener('DOMContentLoaded', () => {
         this.longPressTimer = null;
         if (this.touchStartTarget) {
           this.flow.select(this.touchStartTarget.shapeId, false);
-          this.renderHandles();               // show handles for a simple tap
+          this.renderHandles();               // show handles for a tap
           this.touchStartTarget = null;
         }
       }
