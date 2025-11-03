@@ -1532,16 +1532,68 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
         // ─────────────────────────────────────────────────────────────────────
-    //  LONG-PRESS → VIBRATE → DRAG INSTANTLY (KEEP FINGER DOWN)
+    //  FULL TOUCH HANDLERS: LONG-PRESS → VIBRATE → DRAG INSTANTLY
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Helper: Track touch position even when finger doesn't move
+    startTouchTracker() {
+      this.stopTouchTracker();
+      const interval = () => {
+        if (!this.longPressTimer) return;
+        const touch = this.currentTouch;
+        if (touch) {
+          this.lastTouch = { x: touch.clientX, y: touch.clientY };
+        }
+        this.touchTracker = setTimeout(interval, 16); // ~60fps
+      };
+      interval();
+    },
+
+    stopTouchTracker() {
+      if (this.touchTracker) clearTimeout(this.touchTracker);
+      this.touchTracker = null;
+    },
+
+    // Real-time drag loop (even if finger still)
+    startDragLoop() {
+      this.stopDragLoop();
+      const loop = () => {
+        if (!this.dragging || !this.dragShapeId || !this.lastTouch) return;
+        const pt = this.getPointFromClient(this.lastTouch.x, this.lastTouch.y);
+        const shape = this.flow.getShape(this.dragShapeId);
+        if (shape) {
+          shape.x = pt.x - this.dragOffset.x;
+          shape.y = pt.y - this.dragOffset.y;
+          this.renderGuides(shape);
+          this.flow.render();
+        }
+        this.dragRaf = requestAnimationFrame(loop);
+      };
+      this.dragRaf = requestAnimationFrame(loop);
+    },
+
+    stopDragLoop() {
+      if (this.dragRaf) cancelAnimationFrame(this.dragRaf);
+      this.dragRaf = null;
+    },
+
+    getPointFromClient(clientX, clientY) {
+      const rect = canvasContainer.getBoundingClientRect();
+      const x = (clientX - rect.left - this.flow.view.x) / this.flow.view.zoom;
+      const y = (clientY - rect.top - this.flow.view.y) / this.flow.view.zoom;
+      return { x, y };
+    },
+
     // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
 
-      // 2-FINGER PINCH
+      // 2-FINGER PINCH ZOOM
       if (e.touches.length === 2) {
         e.preventDefault();
         this.isPinching = true;
         this.stopDragLoop();
+        this.stopTouchTracker();
         this.dragging = this.panning = this.resizing = this.isPortDragging = false;
         clearTimeout(this.longPressTimer);
         this.longPressTimer = null;
@@ -1576,7 +1628,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // RESIZE
+      // RESIZE HANDLE
       const handle = el.closest('.resize-handle');
       if (handle && this.flow.selected.size === 1) {
         e.preventDefault();
@@ -1603,6 +1655,10 @@ document.addEventListener('DOMContentLoaded', () => {
         this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
         this.dragShapeId = shapeId;
         this.lastTouch = { x: touch.clientX, y: touch.clientY };
+        this.currentTouch = touch;
+
+        // START TRACKING FINGER EVEN IF STILL
+        this.startTouchTracker();
 
         this.longPressTimer = setTimeout(() => {
           if (navigator.vibrate) navigator.vibrate(40);
@@ -1618,7 +1674,7 @@ document.addEventListener('DOMContentLoaded', () => {
             g.style.boxShadow = '0 12px 24px rgba(0,0,0,0.25)';
           }
 
-          // START DRAG LOOP
+          // DRAG STARTS IMMEDIATELY
           this.startDragLoop();
           this.longPressTimer = null;
         }, 380);
@@ -1648,40 +1704,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
 
-    // REAL-TIME DRAG LOOP
-    startDragLoop() {
-      this.stopDragLoop();
-      const loop = () => {
-        if (!this.dragging || !this.dragShapeId || !this.lastTouch) return;
-        const pt = this.getPointFromClient(this.lastTouch.x, this.lastTouch.y);
-        const shape = this.flow.getShape(this.dragShapeId);
-        if (shape) {
-          shape.x = pt.x - this.dragOffset.x;
-          shape.y = pt.y - this.dragOffset.y;
-          this.renderGuides(shape);
-          this.flow.render();
-        }
-        this.dragRaf = requestAnimationFrame(loop);
-      };
-      this.dragRaf = requestAnimationFrame(loop);
-    },
-
-    stopDragLoop() {
-      if (this.dragRaf) cancelAnimationFrame(this.dragRaf);
-      this.dragRaf = null;
-    },
-
-    getPointFromClient(clientX, clientY) {
-      const rect = canvasContainer.getBoundingClientRect();
-      const x = (clientX - rect.left - this.flow.view.x) / this.flow.view.zoom;
-      const y = (clientY - rect.top - this.flow.view.y) / this.flow.view.zoom;
-      return { x, y };
-    },
-
     onTouchMove(e) {
       if (isRunning) return;
 
-      // PINCH
+      // PINCH ZOOM
       if (e.touches.length === 2 && this.isPinching) {
         e.preventDefault();
         const newDist = Math.hypot(
@@ -1711,11 +1737,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
 
-      // UPDATE LAST TOUCH
+      // UPDATE TOUCH POSITION (for tracker + drag loop)
+      this.currentTouch = touch;
       this.lastTouch = { x: touch.clientX, y: touch.clientY };
 
       // DRAG (handled by loop)
-      if (this.dragging) {
+      if (this.dragging && this.dragShapeId) {
         e.preventDefault();
         return;
       }
@@ -1765,7 +1792,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // DROP
+      // DROP SHAPE
       if (this.dragging && this.dragShapeId) {
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
@@ -1786,10 +1813,11 @@ document.addEventListener('DOMContentLoaded', () => {
         this.stopDragLoop();
       }
 
-      // RESET
+      // RESET ALL
+      this.stopTouchTracker();
       this.dragging = this.dragShapeId = this.dragOffset = null;
       this.panning = this.resizing = this.isPortDragging = false;
-      this.lastTouch = null;
+      this.lastTouch = this.currentTouch = null;
       canvasContainer.style.cursor = 'grab';
     }
     // --- END REVISED Touch Handlers ---
