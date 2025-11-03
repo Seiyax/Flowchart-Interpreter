@@ -1532,7 +1532,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
         // ─────────────────────────────────────────────────────────────────────
-    //  CANVA‑STYLE LONG‑PRESS → DRAG  (no jump, no ghost handles)
+    //  CANVA‑STYLE LONG‑PRESS → PICK‑UP & DRAG  (perfect on every press)
     // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
@@ -1590,7 +1590,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 3. Shape → long‑press → drag
+      // 3. Shape → long‑press → **pick‑up**
       const shapeG = el.closest('.flowchart-shape');
       if (shapeG) {
         e.preventDefault();
@@ -1612,12 +1612,12 @@ document.addEventListener('DOMContentLoaded', () => {
           // ---- PICK‑UP ------------------------------------------------
           this.dragging = true;
           this.dragShapeId = shapeId;
-          this.dragOffset = null;               // set on first move
+          this.dragOffset = null;               // will be set on first move
 
-          // **select only – NO renderHandles() here**
+          // select (no handles yet)
           this.flow.select(shapeId, false);
 
-          // visual lift (Canva style)
+          // visual lift – Canva style
           const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
           if (g) {
             g.style.transition = 'transform .12s ease-out, box-shadow .12s';
@@ -1698,10 +1698,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (shape) {
           this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
         }
-
-        // **Clear old handles & draw fresh ones at the correct spot**
+        // clear any old handles & draw fresh ones at the correct spot
         handlesLayer.innerHTML = '';
-        this.renderHandles();                 // <-- only here
+        this.renderHandles();
       }
 
       // ---- 2. DRAG SHAPE (smooth follow) ----
@@ -1715,7 +1714,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         this.renderGuides(shape);
         this.flow.render();
-        this.renderHandles();                // keep handles glued
+        this.renderHandles();   // keep handles glued
         return;
       }
 
@@ -1744,7 +1743,7 @@ document.addEventListener('DOMContentLoaded', () => {
         this.longPressTimer = null;
         if (this.touchStartTarget) {
           this.flow.select(this.touchStartTarget.shapeId, false);
-          this.renderHandles();               // show handles for a tap
+          this.renderHandles();
           this.touchStartTarget = null;
         }
       }
