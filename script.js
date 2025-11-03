@@ -118,19 +118,19 @@ document.addEventListener('DOMContentLoaded', () => {
       return {
         shapes: [
           { id: 's0', type: 'ellipse', x: 280, y: 40, w: 140, h: 60, text: 'START' },
-          { id: 's1', type: 'hexagon', x: 270, y: 140, w: 160, h: 80, text: 'DECLARE a = 0' },
-          { id: 's2', type: 'diamond', x: 270, y: 260, w: 160, h: 100, text: 'a < 3' },
-          { id: 's3', type: 'rect', x: 270, y: 400, w: 160, h: 60, text: 'SET a = a + 1' },
-          { id: 's4', type: 'parallelogram', x: 480, y: 270, w: 160, h: 60, text: 'PRINT "Hello"' },
+          { id: 's1', type: 'hexagon', x: 270, y: 140, w: 160, h: 80, text: 'INIT count = 0' },
+          { id: 's2', type: 'parallelogram', x: 270, y: 260, w: 160, h: 80, text: 'PRINT "hi pede ba magpalambing? sige na pls"' },
+          { id: 's3', type: 'rect', x: 270, y: 380, w: 160, h: 60, text: 'SET count = count + 1' },
+          { id: 's4', type: 'diamond', x: 480, y: 370, w: 160, h: 80, text: 'count < 5' },
           { id: 's5', type: 'ellipse', x: 280, y: 500, w: 140, h: 60, text: 'STOP' }
         ],
         connectors: [
           { id: 'c0', from: { id: 's0', port: 'bottom' }, to: { id: 's1', port: 'top' }, label: '' },
           { id: 'c1', from: { id: 's1', port: 'bottom' }, to: { id: 's2', port: 'top' }, label: '' },
-          { id: 'c2', from: { id: 's2', port: 'bottom' }, to: { id: 's3', port: 'top' }, label: 'Yes' },
-          { id: 'c3', from: { id: 's3', port: 'bottom' }, to: { id: 's2', port: 'bottom' }, label: '' },
-          { id: 'c4', from: { id: 's2', port: 'right' }, to: { id: 's4', port: 'left' }, label: 'No' },
-          { id: 'c5', from: { id: 's4', port: 'bottom' }, to: { id: 's5', port: 'top' }, label: '' }
+          { id: 'c2', from: { id: 's2', port: 'bottom' }, to: { id: 's3', port: 'top' }, label: '' },
+          { id: 'c3', from: { id: 's3', port: 'right' }, to: { id: 's4', port: 'left' }, label: '' },
+          { id: 'c4', from: { id: 's4', port: 'top' }, to: { id: 's2', port: 'right' }, label: 'TRUE' },
+          { id: 'c5', from: { id: 's4', port: 'bottom' }, to: { id: 's5', port: 'right' }, label: 'FALSE' }
         ]
       };
     }
