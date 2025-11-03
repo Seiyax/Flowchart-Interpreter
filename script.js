@@ -1532,17 +1532,19 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
         // ─────────────────────────────────────────────────────────────────────
-    //  INSTANT DRAG ON FIRST TOUCH — CANVA STYLE (NO LONG-PRESS)
+    //  LONG-PRESS → VIBRATE → DRAG INSTANTLY (KEEP FINGER DOWN)
     // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
 
-      // 2-FINGER PINCH ZOOM
+      // 2-FINGER PINCH
       if (e.touches.length === 2) {
         e.preventDefault();
         this.isPinching = true;
         this.stopDragLoop();
         this.dragging = this.panning = this.resizing = this.isPortDragging = false;
+        clearTimeout(this.longPressTimer);
+        this.longPressTimer = null;
 
         this.lastPinchDist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
@@ -1574,7 +1576,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // RESIZE HANDLE
+      // RESIZE
       const handle = el.closest('.resize-handle');
       if (handle && this.flow.selected.size === 1) {
         e.preventDefault();
@@ -1587,7 +1589,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // SHAPE → INSTANT DRAG ON TOUCH
+      // SHAPE → LONG-PRESS = DRAG
       const shapeG = el.closest('.flowchart-shape');
       if (shapeG) {
         e.preventDefault();
@@ -1602,26 +1604,29 @@ document.addEventListener('DOMContentLoaded', () => {
         this.dragShapeId = shapeId;
         this.lastTouch = { x: touch.clientX, y: touch.clientY };
 
-        // INSTANT DRAG START
-        this.dragging = true;
-        this.flow.select(shapeId, false);
-        handlesLayer.innerHTML = ''; // hide handles
+        this.longPressTimer = setTimeout(() => {
+          if (navigator.vibrate) navigator.vibrate(40);
 
-        // LIFT VISUAL
-        const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
-        if (g) {
-          g.style.transition = 'transform .1s ease-out, box-shadow .1s';
-          g.style.transform = 'translateY(-6px) scale(1.04)';
-          g.style.boxShadow = '0 12px 24px rgba(0,0,0,0.25)';
-        }
+          this.dragging = true;
+          this.flow.select(shapeId, false);
+          handlesLayer.innerHTML = '';
 
-        // START REAL-TIME LOOP
-        this.startDragLoop();
+          const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
+          if (g) {
+            g.style.transition = 'transform .1s ease-out, box-shadow .1s';
+            g.style.transform = 'translateY(-6px) scale(1.04)';
+            g.style.boxShadow = '0 12px 24px rgba(0,0,0,0.25)';
+          }
+
+          // START DRAG LOOP
+          this.startDragLoop();
+          this.longPressTimer = null;
+        }, 380);
 
         return;
       }
 
-      // CONNECTOR LINE → TAP SELECT
+      // CONNECTOR LINE
       const conn = el.closest('.connector-group');
       if (conn && conn.dataset.connId) {
         e.preventDefault();
@@ -1631,7 +1636,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // BACKGROUND → PAN
+      // PAN
       if (this.tool === 'shape') return;
       e.preventDefault();
       this.panning = true;
@@ -1709,7 +1714,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // UPDATE LAST TOUCH
       this.lastTouch = { x: touch.clientX, y: touch.clientY };
 
-      // DRAG (loop handles it)
+      // DRAG (handled by loop)
       if (this.dragging) {
         e.preventDefault();
         return;
@@ -1732,8 +1737,10 @@ document.addEventListener('DOMContentLoaded', () => {
         this.lastPinchDist = null;
       }
 
-      // TAP ON BACKGROUND OR NON-SHAPE
-      if (!this.dragging && !this.isPortDragging && !this.resizing && !this.panning) {
+      // TAP (short press)
+      if (this.longPressTimer) {
+        clearTimeout(this.longPressTimer);
+        this.longPressTimer = null;
         const shapeG = e.target.closest('.flowchart-shape');
         if (shapeG) {
           this.flow.select(shapeG.dataset.shapeId, false);
@@ -1758,7 +1765,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // DROP SHAPE
+      // DROP
       if (this.dragging && this.dragShapeId) {
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
