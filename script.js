@@ -1531,28 +1531,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     },
 
-        // --- REVISED: Touch Handler Functions (Perfect Long-Press-to-Drag) ---
+        // ─────────────────────────────────────────────────────────────────────
+    //  REVISED TOUCH HANDLERS – LONG-PRESS → DRAG (works on every device)
+    // ─────────────────────────────────────────────────────────────────────
     onTouchStart(e) {
       if (isRunning) return;
 
-      // --- 1. Pinch-to-Zoom (2 fingers) ---
+      // ── 2-finger pinch-zoom ───────────────────────────────────────
       if (e.touches.length === 2) {
         e.preventDefault();
         this.isPinching = true;
-        this.dragging = false;
-        this.panning = false;
-        this.resizing = false;
-        this.isPortDragging = false;
+        this.dragging = this.panning = this.resizing = this.isPortDragging = false;
         if (this.longPressTimer) clearTimeout(this.longPressTimer);
-        this.longPressTimer = null;
-        this.touchStartTarget = null;
+        this.longPressTimer = this.touchStartTarget = null;
 
         this.lastPinchDist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
         );
 
-        // Cancel any active connector
+        // cancel any half-drawn connector
         if (this.connectorStart) {
           this.connectorStart = null;
           tempLayer.innerHTML = '';
@@ -1563,137 +1561,125 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // --- 2. Single Finger ---
-      if (e.touches.length === 1) {
-        const touch = e.touches[0];
-        const targetEl = e.target;
+      // ── 1-finger ─────────────────────────────────────────────────────
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const el = e.target;
 
-        // Priority 1: Connector Port (Tap or Drag-to-Connect)
-        const port = targetEl.closest('.connector-port');
-        if (port) {
-          e.preventDefault();
-          this.panning = false;
-          if (this.tool === 'connector') {
-            // Let touchend handle click
-          } else {
-            this.isPortDragging = true;
-            this.connectorStart = { id: port.dataset.shapeId, port: port.dataset.port };
-            this.drawTempConnector(touch);
-          }
-          return;
-        }
-
-        // Priority 2: Resize Handle
-        const handle = targetEl.closest('.resize-handle');
-        if (handle) {
-          e.preventDefault();
-          this.panning = false;
-          this.resizing = true;
-          this.resizeHandle = handle.dataset.dir;
-          this.resizeStart = this.getPoint(touch);
-          const shape = this.flow.getShape([...this.flow.selected][0]);
-          if (shape) this.resizeStartShape = { ...shape };
-          return;
-        }
-
-        // Priority 3: Shape Body → Long-Press to Drag
-        const shape = targetEl.closest('.flowchart-shape');
-        if (shape) {
-          e.preventDefault();
-          this.panning = false;
-
-          this.touchStartTarget = {
-            shapeId: shape.dataset.shapeId,
-            clientX: touch.clientX,
-            clientY: touch.clientY
-          };
-
-          this.longPressTimer = setTimeout(() => {
-            if (!this.touchStartTarget) return;
-
-            const { shapeId } = this.touchStartTarget;
-
-            // Haptic feedback
-            if (navigator.vibrate) navigator.vibrate(40);
-
-            // Pick up shape
-            this.dragging = true;
-            this.dragShapeId = shapeId;
-            this.dragOffset = null; // Set on first move
-
-            // Select shape
-            this.flow.select(shapeId, false);
-            this.renderHandles();
-
-            // Optional: Visual lift
-            const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
-            if (g) {
-              g.style.transition = 'transform 0.1s';
-              g.style.transform = 'translateY(-4px) scale(1.02)';
-            }
-
-            this.touchStartTarget = null;
-            this.longPressTimer = null;
-          }, 420); // 420ms = clear long-press
-
-          return;
-        }
-
-        // Priority 4: Connector Line → Tap to Select
-        const conn = targetEl.closest('.connector-group');
-        if (conn && conn.dataset.connId) {
-          e.preventDefault();
-          this.panning = false;
-          this.flow.select(conn.dataset.connId, false);
-          this.renderHandles();
-          return;
-        }
-
-        // Priority 5: Background → Add Shape or Pan
-        if (this.tool === 'shape') {
-          return; // Let mousedown fire
-        }
-
-        // Priority 6: Background → Pan
+      // 1. Connector port (tap or drag-to-connect)
+      const port = el.closest('.connector-port');
+      if (port) {
         e.preventDefault();
-        this.panning = true;
-        this.panStart = {
-          x: touch.clientX - this.flow.view.x,
-          y: touch.clientY - this.flow.view.y
+        this.panning = false;
+        if (this.tool !== 'connector') {
+          this.isPortDragging = true;
+          this.connectorStart = { id: port.dataset.shapeId, port: port.dataset.port };
+          this.drawTempConnector(touch);
+        }
+        return;
+      }
+
+      // 2. Resize handle
+      const handle = el.closest('.resize-handle');
+      if (handle) {
+        e.preventDefault();
+        this.panning = false;
+        this.resizing = true;
+        this.resizeHandle = handle.dataset.dir;
+        this.resizeStart = this.getPoint(touch);
+        const shape = this.flow.getShape([...this.flow.selected][0]);
+        if (shape) this.resizeStartShape = { ...shape };
+        return;
+      }
+
+      // 3. Shape body → long-press → drag
+      const shapeG = el.closest('.flowchart-shape');
+      if (shapeG) {
+        e.preventDefault();
+        this.panning = false;
+
+        this.touchStartTarget = {
+          shapeId: shapeG.dataset.shapeId,
+          clientX: touch.clientX,
+          clientY: touch.clientY
         };
 
-        if (this.flow.selected.size > 0) {
-          this.flow.selected.clear();
-          this.flow.render();
+        this.longPressTimer = setTimeout(() => {
+          if (!this.touchStartTarget) return;
+          const { shapeId } = this.touchStartTarget;
+
+          // haptic
+          if (navigator.vibrate) navigator.vibrate(40);
+
+          // pick-up
+          this.dragging = true;
+          this.dragShapeId = shapeId;
+          this.dragOffset = null;               // will be set on first move
+          this.flow.select(shapeId, false);
           this.renderHandles();
-        }
+
+          // visual lift (optional but nice)
+          const g = document.querySelector(`[data-shape-id="${shapeId}"]`);
+          if (g) {
+            g.style.transition = 'transform .1s';
+            g.style.transform = 'translateY(-4px) scale(1.02)';
+          }
+
+          this.touchStartTarget = null;
+          this.longPressTimer = null;
+        }, 420); // 420 ms feels natural
+
+        return;
+      }
+
+      // 4. Connector line → tap to select
+      const conn = el.closest('.connector-group');
+      if (conn && conn.dataset.connId) {
+        e.preventDefault();
+        this.panning = false;
+        this.flow.select(conn.dataset.connId, false);
+        this.renderHandles();
+        return;
+      }
+
+      // 5. Background → add shape (tool = shape) or pan
+      if (this.tool === 'shape') return; // let mousedown fire
+
+      // 6. Pan canvas
+      e.preventDefault();
+      this.panning = true;
+      this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
+      if (this.flow.selected.size) {
+        this.flow.selected.clear();
+        this.flow.render();
+        this.renderHandles();
       }
     },
 
     onTouchMove(e) {
       if (isRunning) return;
 
-      // --- Pinch Zoom ---
+      // ── Pinch-zoom ───────────────────────────────────────────────────
       if (e.touches.length === 2 && this.isPinching) {
         e.preventDefault();
         const newDist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
         );
-        const scaleFactor = newDist / this.lastPinchDist;
+        const scale = newDist / this.lastPinchDist;
         this.lastPinchDist = newDist;
 
         const rect = canvasContainer.getBoundingClientRect();
         const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        const mouseX = midX - rect.left;
-        const mouseY = midY - rect.top;
-        const svgX = (mouseX - this.flow.view.x) / this.flow.view.zoom;
-        const svgY = (mouseY - this.flow.view.y) / this.flow.view.zoom;
-        const newZoom = clamp(this.flow.view.zoom * scaleFactor, 0.2, 3);
+        const mx = midX - rect.left;
+        const my = midY - rect.top;
+        const sx = (mx - this.flow.view.x) / this.flow.view.zoom;
+        const sy = (my - this.flow.view.y) / this.flow.view.zoom;
+        const newZoom = clamp(this.flow.view.zoom * scale, 0.2, 3);
 
-        this.flow.view.x = mouseX - svgX * newZoom;
-        this.flow.view.y = mouseY - svgY * newZoom;
+        this.flow.view.x = mx - sx * newZoom;
+        this.flow.view.y = my - sy * newZoom;
         this.flow.view.zoom = newZoom;
 
         this.flow.render();
@@ -1701,59 +1687,55 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // --- Single Finger ---
-      if (e.touches.length === 1) {
-        const touch = e.touches[0];
+      // ── Single finger ───────────────────────────────────────────────
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
 
-        // --- Initialize drag offset on first move after pickup ---
-        if (this.dragging && this.dragShapeId && this.dragOffset === null) {
-          const pt = this.getPoint(touch);
-          const shape = this.flow.getShape(this.dragShapeId);
-          if (shape) {
-            this.dragOffset = {
-              x: pt.x - shape.x,
-              y: pt.y - shape.y
-            };
-          }
+      // ---- 1. Initialise drag offset on FIRST move after pickup ----
+      if (this.dragging && this.dragShapeId && this.dragOffset === null) {
+        const pt = this.getPoint(touch);
+        const shape = this.flow.getShape(this.dragShapeId);
+        if (shape) {
+          this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
         }
+      }
 
-        // --- DRAG SHAPE ---
-        if (this.dragging && this.dragShapeId && this.dragOffset !== null) {
-          e.preventDefault();
-          const pt = this.getPoint(touch);
-          const shape = this.flow.getShape(this.dragShapeId);
+      // ---- 2. DRAG SHAPE ------------------------------------------------
+      if (this.dragging && this.dragShapeId && this.dragOffset !== null) {
+        e.preventDefault();                     // stop page scroll / panning
+        const pt = this.getPoint(touch);
+        const shape = this.flow.getShape(this.dragShapeId);
 
-          // Optional: smooth snap
-          shape.x = pt.x - this.dragOffset.x;
-          shape.y = pt.y - this.dragOffset.y;
+        // live move (no snap while dragging – feels smoother)
+        shape.x = pt.x - this.dragOffset.x;
+        shape.y = pt.y - this.dragOffset.y;
 
-          this.renderGuides(shape);
-          this.flow.render();
-          this.renderHandles();
-          return;
-        }
+        this.renderGuides(shape);
+        this.flow.render();
+        this.renderHandles();
+        return;
+      }
 
-        // --- PAN CANVAS ---
-        if (this.panning) {
-          e.preventDefault();
-          this.flow.view.x = touch.clientX - this.panStart.x;
-          this.flow.view.y = touch.clientY - this.panStart.y;
-          this.flow.render();
-          this.renderHandles();
-        }
+      // ---- 3. PAN CANVAS ------------------------------------------------
+      if (this.panning) {
+        e.preventDefault();
+        this.flow.view.x = touch.clientX - this.panStart.x;
+        this.flow.view.y = touch.clientY - this.panStart.y;
+        this.flow.render();
+        this.renderHandles();
       }
     },
 
     onTouchEnd(e) {
       if (isRunning) return;
 
-      // --- Pinch End ---
+      // ── Pinch end ───────────────────────────────────────────────────
       if (this.isPinching && e.touches.length < 2) {
         this.isPinching = false;
         this.lastPinchDist = null;
       }
 
-      // --- Long-Press Tap (if timer still active) ---
+      // ── Long-press tap (timer still alive) ───────────────────────────
       if (this.longPressTimer) {
         clearTimeout(this.longPressTimer);
         this.longPressTimer = null;
@@ -1764,35 +1746,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // --- Port Tap (Click-to-Connect) ---
-      const targetEl = e.target;
-      const port = targetEl.closest('.connector-port');
+      // ── Connector port tap (click-to-connect) ───────────────────────
+      const port = e.target.closest('.connector-port');
       if (port && !this.isPortDragging && !this.dragging && !this.resizing && !this.panning) {
         e.preventDefault();
-        const clickedPort = { id: port.dataset.shapeId, port: port.dataset.port };
+        const clicked = { id: port.dataset.shapeId, port: port.dataset.port };
         if (!this.connectorStart) {
           this.tool = 'connector';
           this.updateToolbar();
-          this.connectorStart = clickedPort;
+          this.connectorStart = clicked;
           this.drawTempConnector(e.changedTouches[0]);
           this.renderHandles();
         } else {
-          this.completeConnection(clickedPort);
+          this.completeConnection(clicked);
         }
         return;
       }
 
-      // --- Finalize Drag ---
+      // ── Finalise drag (snap + save) ─────────────────────────────────
       if (this.dragging && this.dragShapeId) {
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
+          // final grid snap
           shape.x = snapToGrid(shape.x);
           shape.y = snapToGrid(shape.y);
           this.flow.save();
         }
         this.clearGuides();
 
-        // Reset lift effect
+        // remove lift effect
         const g = document.querySelector(`[data-shape-id="${this.dragShapeId}"]`);
         if (g) {
           g.style.transition = '';
@@ -1800,17 +1782,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // --- Reset All States ---
-      this.dragging = false;
-      this.dragShapeId = null;
-      this.dragOffset = null;
-      this.panning = false;
-      this.resizing = false;
-      this.isPortDragging = false;
+      // ── Reset all flags ─────────────────────────────────────────────
+      this.dragging = this.dragShapeId = this.dragOffset = null;
+      this.panning = this.resizing = this.isPortDragging = false;
       this.touchStartTarget = null;
       canvasContainer.style.cursor = 'grab';
     }
-    // --- END REVISED Touch Handlers ---
+    // ─────────────────────────────────────────────────────────────────────
     // --- END REVISED Touch Handlers ---
     
   };
