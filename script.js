@@ -2,7 +2,7 @@
    VISUAL PSEUDOPLAY — COMBINED SCRIPT
    (FEAT: Auto-Sizing Shapes, Fixed Text Wrap, Modal Labels, Ctrl+Zoom)
    (MODS: Connector Edit, Copy/Paste, Ctrl+Z/Y/C/V, Offset Ports, Auto-Width, Max-Width, Char-Wrap, Single Port Out, Modal Lag Fix, Interpreter Fix)
-   (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool)
+   (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch Controls)
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -526,6 +526,8 @@ document.addEventListener('DOMContentLoaded', () => {
     panning: false, panStart: null,
     connectorStart: null, shapeType: null,
     isPortDragging: false,
+    isPinching: false,
+    lastPinchDist: null,
     resizing: false,
     resizeHandle: null,
     resizeStart: null,
@@ -572,6 +574,12 @@ document.addEventListener('DOMContentLoaded', () => {
       canvasContainer.addEventListener('mousedown', this.onMouseDown.bind(this));
       window.addEventListener('mousemove', this.onMouseMove.bind(this));
       window.addEventListener('mouseup', this.onMouseUp.bind(this));
+
+      // --- NEW: Touch Event Listeners ---
+      canvasContainer.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false });
+      window.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
+      window.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
+      // --- END NEW ---
     },
     
     bindToolbarEvents() {
@@ -1380,7 +1388,109 @@ document.addEventListener('DOMContentLoaded', () => {
     
     toggleTheme() {
       this.setTheme(!document.documentElement.classList.contains('dark'));
+    },
+
+    // --- NEW: Touch Handler Functions ---
+    
+    onTouchStart(e) {
+        if (isRunning) return;
+
+        if (e.touches.length === 2) {
+            e.preventDefault(); // Prevent page zoom
+            // --- PINCH-TO-ZOOM START ---
+            this.isPinching = true;
+            this.dragging = false; 
+            this.panning = false;
+            
+            this.lastPinchDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            
+            // Cancel any pending connection
+            if (this.connectorStart) {
+                this.connectorStart = null;
+                tempLayer.innerHTML = '';
+                this.tool = 'select';
+                this.updateToolbar();
+                this.renderHandles();
+            }
+
+        } else if (e.touches.length === 1 && e.target === canvasContainer) {
+            // --- ONE-FINGER PAN START ---
+            // Only pan if touching the canvas background
+            e.preventDefault(); // Prevent page scroll
+            const touch = e.touches[0];
+            
+            this.panning = true;
+            this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
+            
+            if (this.flow.selected.size > 0) {
+                this.flow.selected.clear();
+                this.flow.render();
+                this.renderHandles();
+            }
+        }
+        // If 1 touch on a shape/port, we do NOT preventDefault.
+        // We let the browser simulate mousedown/click, which our app already handles.
+    },
+
+    onTouchMove(e) {
+        if (isRunning) return;
+
+        if (e.touches.length === 2 && this.isPinching) {
+            e.preventDefault(); // Prevent page zoom
+            // --- PINCH-TO-ZOOM MOVE ---
+            const newDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            
+            const scaleFactor = newDist / this.lastPinchDist;
+            this.lastPinchDist = newDist;
+
+            const rect = canvasContainer.getBoundingClientRect();
+            const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            
+            const mouseX = midX - rect.left;
+            const mouseY = midY - rect.top;
+            const svgX = (mouseX - this.flow.view.x) / this.flow.view.zoom;
+            const svgY = (mouseY - this.flow.view.y) / this.flow.view.zoom;
+            
+            const newZoom = clamp(this.flow.view.zoom * scaleFactor, 0.2, 3);
+            
+            this.flow.view.x = mouseX - svgX * newZoom;
+            this.flow.view.y = mouseY - svgY * newZoom;
+            this.flow.view.zoom = newZoom;
+
+            this.flow.render();
+            this.renderHandles();
+
+        } else if (e.touches.length === 1 && this.panning) {
+            // --- ONE-FINGER PAN MOVE ---
+            e.preventDefault(); // Prevent page scroll
+            this.onMouseMove(e.touches[0]); 
+        }
+        // If 1 touch and dragging a shape, browser simulates mousemove.
+    },
+
+    onTouchEnd(e) {
+        if (isRunning) return;
+
+        if (this.isPinching && e.touches.length < 2) {
+            this.isPinching = false;
+            this.lastPinchDist = null;
+        }
+
+        if (this.panning && e.touches.length === 0) {
+            // Last finger lifted
+            this.onMouseUp(e.changedTouches[0]);
+        }
+        // Let browser simulate mouseup for dragging/connecting
     }
+    // --- END NEW Touch Handlers ---
+    
   };
 
   /* ==========================================================================
