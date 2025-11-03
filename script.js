@@ -1532,84 +1532,85 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
     onTouchMove(e) {
-        if (isRunning) return;
+    if (isRunning) return;
 
-        // --- 1. Handle Pinch-to-Zoom ---
-        if (e.touches.length === 2 && this.isPinching) {
-            e.preventDefault(); // Prevent page zoom
-            const newDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            
-            const scaleFactor = newDist / this.lastPinchDist;
-            this.lastPinchDist = newDist;
+    // --- Pinch Zoom ---
+    if (e.touches.length === 2 && this.isPinching) {
+        e.preventDefault();
+        const newDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        const scaleFactor = newDist / this.lastPinchDist;
+        this.lastPinchDist = newDist;
 
-            const rect = canvasContainer.getBoundingClientRect();
-            const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-            const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-            
-            const mouseX = midX - rect.left;
-            const mouseY = midY - rect.top;
-            const svgX = (mouseX - this.flow.view.x) / this.flow.view.zoom;
-            const svgY = (mouseY - this.flow.view.y) / this.flow.view.zoom;
-            
-            const newZoom = clamp(this.flow.view.zoom * scaleFactor, 0.2, 3);
-            
-            this.flow.view.x = mouseX - svgX * newZoom;
-            this.flow.view.y = mouseY - svgY * newZoom;
-            this.flow.view.zoom = newZoom;
+        const rect = canvasContainer.getBoundingClientRect();
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+        const mouseX = midX - rect.left;
+        const mouseY = midY - rect.top;
+        const svgX = (mouseX - this.flow.view.x) / this.flow.view.zoom;
+        const svgY = (mouseY - this.flow.view.y) / this.flow.view.zoom;
+        const newZoom = clamp(this.flow.view.zoom * scaleFactor, 0.2, 3);
+
+        this.flow.view.x = mouseX - svgX * newZoom;
+        this.flow.view.y = mouseY - svgY * newZoom;
+        this.flow.view.zoom = newZoom;
+
+        this.flow.render();
+        this.renderHandles();
+        return;
+    }
+
+    // --- One finger ---
+    if (e.touches.length === 1) {
+        const touch = e.touches[0];
+
+        // If still waiting for long-press, cancel if moved
+        if (this.longPressTimer && this.touchStartTarget) {
+            const dx = Math.abs(touch.clientX - this.touchStartTarget.x);
+            const dy = Math.abs(touch.clientY - this.touchStartTarget.y);
+            if (dx > 10 || dy > 10) {
+                clearTimeout(this.longPressTimer);
+                this.longPressTimer = null;
+                this.touchStartTarget = null;
+
+                // Become panning if select tool
+                if (this.tool === 'select') {
+                    this.panning = true;
+                    this.panStart = {
+                        x: touch.clientX - this.flow.view.x,
+                        y: touch.clientY - this.flow.view.y
+                    };
+                }
+            }
+        }
+
+        // ✅ DRAG SHAPE (Follow finger exactly like Canva)
+        if (this.dragging && this.dragShapeId) {
+            e.preventDefault();
+            const pt = this.getPoint(touch);
+            const shape = this.flow.getShape(this.dragShapeId);
+
+            shape.x = pt.x - this.dragOffset.x;
+            shape.y = pt.y - this.dragOffset.y;
 
             this.flow.render();
             this.renderHandles();
             return;
-        } 
-        
-        
-        // --- 2. Handle One-Finger Move ---
-        // --- 2. Handle One-Finger Move ---
-if (e.touches.length === 1) {
-    const touch = e.touches[0];
+        }
 
-    // Check if we are waiting for a long press
-    if (this.longPressTimer && this.touchStartTarget) {
-        const dx = Math.abs(touch.clientX - this.touchStartTarget.x);
-        const dy = Math.abs(touch.clientY - this.touchStartTarget.y);
-        if (dx > 10 || dy > 10) {
-            // Moved too far, cancel long press
-            clearTimeout(this.longPressTimer);
-            this.longPressTimer = null;
-            this.touchStartTarget = null;
-
-            // Now it becomes a pan (if we're in select mode)
-            if (this.tool === 'select') {
-                this.panning = true;
-                this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
-            }
+        // ✅ PAN CANVAS
+        if (this.panning) {
+            e.preventDefault();
+            this.flow.view.x = touch.clientX - this.panStart.x;
+            this.flow.view.y = touch.clientY - this.panStart.y;
+            this.flow.render();
+            this.renderHandles();
         }
     }
-
-    // ✅ FIRST PRIORITY: dragging shape
-    if (this.dragging && this.dragShapeId) {
-    e.preventDefault();
-
-    const touch = e.touches[0];
-    const pt = this.getPoint(touch);
-
-    const shape = this.flow.getShape(this.dragShapeId);
-
-    // ✅ Direct follow finger
-    shape.x = pt.x - this.dragOffset.x;
-    shape.y = pt.y - this.dragOffset.y;
-
-    this.flow.render();
-    this.renderHandles();
-    return;
-}
-
-}
-
-    },
+},
 
     onTouchEnd(e) {
         if (isRunning) return;
