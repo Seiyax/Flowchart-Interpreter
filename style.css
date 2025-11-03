@@ -172,11 +172,16 @@ button { border: none; background: none; cursor: pointer; font: inherit; color: 
   outline: none;
   color: var(--text-primary);
   font: inherit;
-  width: 100%;
+  flex-grow: 1; /* Make it fill the remaining space */
 }
 .prompt::before {
   content: '> ';
   color: var(--text-secondary);
+  margin-right: 0.5ch; /* Add a small space */
+}
+.prompt {
+  display: flex;
+  align-items: center;
 }
 
 
@@ -363,7 +368,7 @@ button { border: none; background: none; cursor: pointer; font: inherit; color: 
   
   /* 2. The "Comet" Effect */
   /* A tiny 5px "light" followed by a long 55px gap */
-  stroke-dasharray: 10 10; 
+  stroke-dasharray: 10 20; 
 
   /* 3. The "Glow" */
   /* This is the key: we apply a shadow *of the same color* to create a soft, luminous glow effect. */
@@ -379,4 +384,3 @@ button { border: none; background: none; cursor: pointer; font: inherit; color: 
     filter: brightness(1.2);
     transition: all 0.1s ease;
 }
-
