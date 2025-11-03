@@ -2,7 +2,7 @@
    VISUAL PSEUDOPLAY — COMBINED SCRIPT
    (FEAT: Auto-Sizing Shapes, Fixed Text Wrap, Modal Labels, Ctrl+Zoom)
    (MODS: Connector Edit, Copy/Paste, Ctrl+Z/Y/C/V, Offset Ports, Auto-Width, Max-Width, Char-Wrap, Single Port Out, Modal Lag Fix, Interpreter Fix)
-   (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch Fixes, 300ms Long-Press-to-Drag)
+   (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch Fixes, Long-Press-to-Drag)
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1140,12 +1140,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     onShapeMouseDown(e, id) {
       if (isRunning) return;
-      
-      // --- NEW: Vibrate on successful long press ---
-      if (navigator.vibrate) {
-        navigator.vibrate(50); // 50ms vibration
-      }
-      
       if (this.tool === 'select') {
         this.dragging = true;
         this.dragShapeId = id;
@@ -1405,7 +1399,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     onTouchStart(e) {
         if (isRunning) return;
-        this.touchStartTarget = null; // Clear any previous tap target
 
         // --- 1. Handle Pinch-to-Zoom ---
         if (e.touches.length === 2) {
@@ -1413,8 +1406,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.isPinching = true;
             this.dragging = false; 
             this.panning = false;
+            // Clear any pending long press
             if (this.longPressTimer) clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
+            this.touchStartTarget = null;
             
             this.lastPinchDist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
@@ -1473,14 +1468,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.panning = false;
                 this.touchStartTarget = { touch, shapeId: shape.dataset.shapeId, x: touch.clientX, y: touch.clientY };
 
-                this.longPressTimer = setTimeout(() => {
-                    if (this.touchStartTarget) {
-                        // Long press successful
-                        this.onShapeMouseDown(this.touchStartTarget.touch, this.touchStartTarget.shapeId);
-                        this.longPressTimer = null;
-                        this.touchStartTarget = null; // Clear target so 'tap' doesn't fire
-                    }
-                }, 300); // <-- UPDATED to 300ms
+            this.longPressTimer = setTimeout(() => {
+    if (this.touchStartTarget) {
+
+        // ✅ Vibrate feedback
+        if (navigator.vibrate) navigator.vibrate(30);
+
+        const { touch, shapeId } = this.touchStartTarget;
+        this.onShapeMouseDown(touch, shapeId); // select + prepare drag
+
+        // ✅ Enable dragging on touch
+        this.dragging = true;
+        this.dragShapeId = shapeId;
+        const pt = this.getPoint(touch);
+        const shape = this.flow.getShape(shapeId);
+        this.dragOffset = { x: pt.x - shape.x, y: pt.y - shape.y };
+
+        this.touchStartTarget = null;
+        this.longPressTimer = null;
+    }
+}, 350);
+
+
                 return;
             }
             
@@ -1489,16 +1498,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (conn && conn.dataset.connId) {
                 e.preventDefault(); // Stop scroll
                 this.panning = false;
-                // Store as tap target
-                this.touchStartTarget = { connId: conn.dataset.connId }; 
+                this.flow.select(conn.dataset.connId, false);
                 return;
             }
             
             // Priority 5: Background (Tap to add shape or Pan)
             if (this.tool === 'shape') {
-                // Tapped the background to add a shape.
-                // Store as tap target
-                this.touchStartTarget = { touch, addShape: true, x: touch.clientX, y: touch.clientY };
+                // Tapped the background to add a shape. Let browser simulate mousedown.
+                // We MUST NOT prevent default, or mousedown won't fire.
                 this.panning = false;
                 return;
             }
@@ -1552,37 +1559,45 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         } 
         
+        
         // --- 2. Handle One-Finger Move ---
-        if (e.touches.length === 1) {
-            const touch = e.touches[0];
-            
-            // Check if we are waiting for a long press
-            if (this.longPressTimer && this.touchStartTarget) {
-                const dx = Math.abs(touch.clientX - this.touchStartTarget.x);
-                const dy = Math.abs(touch.clientY - this.touchStartTarget.y);
-                if (dx > 10 || dy > 10) { // Slop threshold
-                    // Moved too far, cancel long press
-                    clearTimeout(this.longPressTimer);
-                    this.longPressTimer = null;
-                    this.touchStartTarget = null; 
-                    // --- BUG FIX ---
-                    // DO NOT START PANNING. If the user started on a shape,
-                    // moving should just cancel the tap/drag.
-                    // Panning will be re-enabled on the next onTouchStart
-                    // if they lift their finger and start on the background.
-                }
-            }
+        // --- 2. Handle One-Finger Move ---
+if (e.touches.length === 1) {
+    const touch = e.touches[0];
 
-            // Now, handle active movements
-            if (this.panning) {
-                e.preventDefault(); 
-                this.onMouseMove(touch); 
-            } else if (this.dragging || this.resizing || this.isPortDragging) {
-                e.preventDefault();
-                this.onMouseMove(touch);
+    // Check if we are waiting for a long press
+    if (this.longPressTimer && this.touchStartTarget) {
+        const dx = Math.abs(touch.clientX - this.touchStartTarget.x);
+        const dy = Math.abs(touch.clientY - this.touchStartTarget.y);
+        if (dx > 10 || dy > 10) {
+            // Moved too far, cancel long press
+            clearTimeout(this.longPressTimer);
+            this.longPressTimer = null;
+            this.touchStartTarget = null;
+
+            // Now it becomes a pan (if we're in select mode)
+            if (this.tool === 'select') {
+                this.panning = true;
+                this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
             }
-            // If nothing is active, allow browser to scroll page
         }
+    }
+
+    // ✅ FIRST PRIORITY: dragging shape
+    if (this.dragging && this.dragShapeId) {
+        e.preventDefault();
+        this.onMouseMove(touch);
+        return;
+    }
+
+    // ✅ SECOND: panning canvas
+    if (this.panning) {
+        e.preventDefault();
+        this.onMouseMove(touch);
+        return;
+    }
+}
+
     },
 
     onTouchEnd(e) {
@@ -1599,19 +1614,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Timer was active, but finger was lifted before it fired
             clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
-        }
-        
-        if (this.touchStartTarget) {
-            // This was a "tap" on a shape, connector, or background
-            if (this.touchStartTarget.shapeId) {
+            if (this.touchStartTarget) {
+                // This was a "tap" on a shape
                 this.flow.select(this.touchStartTarget.shapeId, false);
-            } else if (this.touchStartTarget.connId) {
-                this.flow.select(this.touchStartTarget.connId, false);
-            } else if (this.touchStartTarget.addShape) {
-                // Manually call onMouseDown to add the shape
-                this.onMouseDown(this.touchStartTarget.touch);
+                this.touchStartTarget = null;
             }
-            this.touchStartTarget = null;
         }
         
         // --- 3. Handle Port Click-to-Connect (Tap) ---
