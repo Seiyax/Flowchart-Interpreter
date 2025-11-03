@@ -2,7 +2,7 @@
    VISUAL PSEUDOPLAY — COMBINED SCRIPT
    (FEAT: Auto-Sizing Shapes, Fixed Text Wrap, Modal Labels, Ctrl+Zoom)
    (MODS: Connector Edit, Copy/Paste, Ctrl+Z/Y/C/V, Offset Ports, Auto-Width, Max-Width, Char-Wrap, Single Port Out, Modal Lag Fix, Interpreter Fix)
-   (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch, Mobile Terminal Fix)
+   (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch Fixes, Long-Press-to-Drag)
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -531,14 +531,13 @@ document.addEventListener('DOMContentLoaded', () => {
     isPortDragging: false,
     isPinching: false,
     lastPinchDist: null,
+    longPressTimer: null,
+    touchStartTarget: null,
     resizing: false,
     resizeHandle: null,
     resizeStart: null,
     resizeStartShape: null,
     flow: null,
-    longPressTimeout: null,     // NEW: For long-press detection
-    lastTouchTime: 0,           // NEW: For double-tap detection
-    lastTouchTarget: null,      // NEW: For double-tap target tracking
 
     init() {
       this.flow = new Flowchart();
@@ -1396,44 +1395,46 @@ document.addEventListener('DOMContentLoaded', () => {
       this.setTheme(!document.documentElement.classList.contains('dark'));
     },
 
-    // --- REVISED: Touch Handler Functions (Fix for Drag/Pan/Resize) ---
+    // --- REVISED: Touch Handler Functions (Fix for Long-Press-to-Drag) ---
     
     onTouchStart(e) {
         if (isRunning) return;
 
+        // --- 1. Handle Pinch-to-Zoom ---
         if (e.touches.length === 2) {
-            e.preventDefault(); // Prevent page zoom
-            // --- PINCH-TO-ZOOM START ---
+            e.preventDefault();
             this.isPinching = true;
             this.dragging = false; 
             this.panning = false;
+            // Clear any pending long press
+            if (this.longPressTimer) clearTimeout(this.longPressTimer);
+            this.longPressTimer = null;
+            this.touchStartTarget = null;
             
             this.lastPinchDist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
             );
             
-            // Cancel any pending connection
             if (this.connectorStart) {
                 this.connectorStart = null;
                 tempLayer.innerHTML = '';
                 this.tool = 'select';
                 this.updateToolbar();
-                $all('.flowchart-shape').forEach(shape => shape.classList.remove('hold-feedback'));
                 this.renderHandles();
             }
-            return; // Exit
+            return;
         } 
         
+        // --- 2. Handle One-Finger Touch ---
         if (e.touches.length === 1) {
-            // --- ONE-FINGER START ---
             const touch = e.touches[0];
             const targetEl = e.target;
             
             // Priority 1: Connector Port (Drag/Tap Start)
             const port = targetEl.closest('.connector-port');
             if (port) {
-                e.preventDefault();
+                e.preventDefault(); // Stop scroll
                 this.panning = false;
                 
                 if (this.tool === 'connector') {
@@ -1450,7 +1451,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Priority 2: Resize Handle (Drag)
             const handle = targetEl.closest('.resize-handle');
             if (handle) {
-                e.preventDefault();
+                e.preventDefault(); // Stop scroll
                 this.panning = false;
                 this.resizing = true;
                 this.resizeHandle = handle.dataset.dir;
@@ -1460,64 +1461,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // Priority 3: Shape Body (Long Press to Drag or Tap to Select)
+            // Priority 3: Shape Body (Long Press to Drag, Tap to Select)
             const shape = targetEl.closest('.flowchart-shape');
             if (shape) {
-                e.preventDefault();
+                e.preventDefault(); // Stop scroll AND mousedown simulation
                 this.panning = false;
-                
-                const shapeId = shape.dataset.shapeId;
-                // Add visual feedback
-                shape.classList.add('hold-feedback');
-                
-                // Start a long-press timer
-                const longPressDuration = 300; // 300ms for long press
-                this.longPressTimeout = setTimeout(() => {
-                    // Long press detected, start dragging
-                    this.dragging = true;
-                    this.dragShapeId = shapeId;
-                    const pt = this.getPoint(touch);
-                    const shapeObj = this.flow.getShape(shapeId);
-                    this.dragOffset = { x: pt.x - shapeObj.x, y: pt.y - shapeObj.y };
-                    if (!this.flow.selected.has(shapeId)) {
-                        this.flow.select(shapeId, false); // Select the shape if not already selected
+                this.touchStartTarget = { touch, shapeId: shape.dataset.shapeId, x: touch.clientX, y: touch.clientY };
+
+                this.longPressTimer = setTimeout(() => {
+                    if (this.touchStartTarget) {
+                        // Long press successful
+                        this.onShapeMouseDown(this.touchStartTarget.touch, this.touchStartTarget.shapeId);
+                        this.longPressTimer = null;
+                        this.touchStartTarget = null; // Clear target so 'tap' doesn't fire
                     }
-                    shape.classList.remove('hold-feedback'); // Remove feedback when dragging starts
-                    this.longPressTimeout = null; // Clear timeout
-                }, longPressDuration);
-                
-                // Store the touch start time for double-tap detection
-                this.lastTouchTime = this.lastTouchTime || 0;
-                this.lastTouchTarget = this.lastTouchTarget || null;
-                const currentTime = Date.now();
-                const isDoubleTap = (currentTime - this.lastTouchTime < 300) && (this.lastTouchTarget === shapeId);
-                
-                if (isDoubleTap) {
-                    // Cancel long press and handle double-tap (edit)
-                    clearTimeout(this.longPressTimeout);
-                    this.longPressTimeout = null;
-                    shape.classList.remove('hold-feedback');
-                    this.editShape(touch, shapeId);
-                    this.lastTouchTime = 0; // Reset double-tap timer
-                    this.lastTouchTarget = null;
-                } else {
-                    // Store for potential double-tap
-                    this.lastTouchTime = currentTime;
-                    this.lastTouchTarget = shapeId;
-                }
+                }, 400); // 400ms for a long press
                 return;
             }
             
-            // Priority 4: Connector Line (Select)
+            // Priority 4: Connector Line (Tap to Select)
             const conn = targetEl.closest('.connector-group');
             if (conn && conn.dataset.connId) {
-                e.preventDefault();
+                e.preventDefault(); // Stop scroll
                 this.panning = false;
                 this.flow.select(conn.dataset.connId, false);
                 return;
             }
+            
+            // Priority 5: Background (Tap to add shape or Pan)
+            if (this.tool === 'shape') {
+                // Tapped the background to add a shape. Let browser simulate mousedown.
+                // We MUST NOT prevent default, or mousedown won't fire.
+                this.panning = false;
+                return;
+            }
 
-            // Priority 5: Background (Pan)
+            // Priority 6: Background (Pan)
             e.preventDefault(); // Prevent page scroll
             this.panning = true;
             this.dragging = false;
@@ -1535,9 +1514,9 @@ document.addEventListener('DOMContentLoaded', () => {
     onTouchMove(e) {
         if (isRunning) return;
 
+        // --- 1. Handle Pinch-to-Zoom ---
         if (e.touches.length === 2 && this.isPinching) {
             e.preventDefault(); // Prevent page zoom
-            // --- PINCH-TO-ZOOM MOVE ---
             const newDist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
@@ -1563,44 +1542,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.flow.render();
             this.renderHandles();
-
-        } else if (e.touches.length === 1) {
-            // --- ONE-FINGER MOVE ---
+            return;
+        } 
+        
+        // --- 2. Handle One-Finger Move ---
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
             
-            if (this.panning) {
-                // We are manually panning
-                e.preventDefault(); // Prevent page scroll
-                this.onMouseMove(e.touches[0]); 
-            } else if (this.dragging || this.resizing || this.connectorStart) {
-                // We are dragging/resizing (started by simulated mousedown/touchstart)
-                // We MUST preventDefault to stop the browser from scrolling.
-                e.preventDefault();
-                this.onMouseMove(e.touches[0]);
+            // Check if we are waiting for a long press
+            if (this.longPressTimer && this.touchStartTarget) {
+                const dx = Math.abs(touch.clientX - this.touchStartTarget.x);
+                const dy = Math.abs(touch.clientY - this.touchStartTarget.y);
+                if (dx > 10 || dy > 10) { // Slop threshold
+                    // Moved too far, cancel long press
+                    clearTimeout(this.longPressTimer);
+                    this.longPressTimer = null;
+                    this.touchStartTarget = null;
+                    // Now it becomes a pan (if we're in select mode)
+                    if (this.tool === 'select') {
+                        this.panning = true;
+                        this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
+                    }
+                }
             }
-            // If none of these flags are true, we let the browser scroll the page.
+
+            // Now, handle active movements
+            if (this.panning) {
+                e.preventDefault(); 
+                this.onMouseMove(touch); 
+            } else if (this.dragging || this.resizing || this.isPortDragging) {
+                e.preventDefault();
+                this.onMouseMove(touch);
+            }
+            // If nothing is active, allow browser to scroll page
         }
     },
 
     onTouchEnd(e) {
         if (isRunning) return;
 
-        // Clear long-press timeout if it exists
-        if (this.longPressTimeout) {
-            clearTimeout(this.longPressTimeout);
-            this.longPressTimeout = null;
-            // Remove hold feedback from all shapes
-            $all('.flowchart-shape').forEach(shape => shape.classList.remove('hold-feedback'));
-        }
-
+        // --- 1. Handle Pinch-to-Zoom End ---
         if (this.isPinching && e.touches.length < 2) {
             this.isPinching = false;
             this.lastPinchDist = null;
         }
+
+        // --- 2. Handle Long Press End (Tap) ---
+        if (this.longPressTimer) {
+            // Timer was active, but finger was lifted before it fired
+            clearTimeout(this.longPressTimer);
+            this.longPressTimer = null;
+            if (this.touchStartTarget) {
+                // This was a "tap" on a shape
+                this.flow.select(this.touchStartTarget.shapeId, false);
+                this.touchStartTarget = null;
+            }
+        }
         
-        // Check for a "tap" on a port
+        // --- 3. Handle Port Click-to-Connect (Tap) ---
         const targetEl = e.target;
         const port = targetEl.closest('.connector-port');
-        
         if (port && !this.isPortDragging && !this.dragging && !this.resizing && !this.panning) {
             // It was a tap, not a drag.
             e.preventDefault();
@@ -1618,29 +1619,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return; // Done
         }
 
-        // Check for a "tap" on a shape (select)
-        const shape = targetEl.closest('.flowchart-shape');
-        if (shape && !this.isPortDragging && !this.dragging && !this.resizing && !this.panning) {
-            // It was a tap, not a drag or double-tap.
-            e.preventDefault();
-            const shapeId = shape.dataset.shapeId;
-            this.flow.select(shapeId, false); // Select the shape
-            return;
-        }
-
-        // We need to manually call onMouseUp if we were in a state
-        // that was being driven by onTouchMove.
-        if ((this.panning || this.dragging || this.resizing || this.connectorStart) && e.touches.length === 0) {
-            // Check if changedTouches exists before accessing
+        // --- 4. Handle End of Pan, Drag, Resize, or Port Drag ---
+        if ((this.panning || this.dragging || this.resizing || this.isPortDragging) && e.touches.length === 0) {
             if (e.changedTouches && e.changedTouches.length > 0) {
                 this.onMouseUp(e.changedTouches[0]);
             } else {
-                // Fallback if changedTouches is not available
                 this.onMouseUp(e);
             }
         }
+        
+        // Final cleanup
+        this.touchStartTarget = null;
     }
-    // --- END NEW Touch Handlers ---
+    // --- END REVISED Touch Handlers ---
     
   };
 
@@ -1788,8 +1779,8 @@ document.addEventListener('DOMContentLoaded', () => {
           this.stopRun();
           return;
         }
-        await new Promise(r => setTimeout(r, 200));
-              }
+        await new Promise(r => setTimeout(r, 200)); 
+      }
       
       if (isRunning) {
         const lastShape = ui.flow.getShape(lastShapeId);
