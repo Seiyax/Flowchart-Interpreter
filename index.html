@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Visual PseudoPlay — Flowchart & Pseudocode</title>
+
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+  <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+
+  <meta name="color-scheme" content="light dark" />
+  <meta name="description" content="Visual PseudoPlay — build flowcharts and run pseudocode visually." />
+</head>
+
+<body class="app-root" aria-label="Visual PseudoPlay application">
+
+  <header class="app-header" role="banner">
+    <div class="header-left">
+      <button id="menuToggle" class="icon-btn" aria-label="Open menu" title="Menu">
+        <i data-lucide="menu"></i>
+      </button>
+      <div class="brand">
+        <svg class="brand-mark" width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2L20 8v8l-8 6-8-6V8z" fill="currentColor" stroke="currentColor" stroke-width="0.6"/>
+        </svg>
+        <h1 class="brand-title">Visual PseudoPlay</h1>
+      </div>
+    </div>
+
+    <!-- <div class="header-center">
+      <div id="lightModeBanner" class="theme-banner hidden">Light</div>
+      <div id="darkModeBanner" class="theme-banner hidden">Dark</div>
+    </div> -->
+
+    <div class="header-actions" role="toolbar" aria-label="Main actions">
+      <button id="runBtn" class="action-btn" title="Run (Ctrl+Enter)">
+        <i data-lucide="play"></i>
+        <span class="btn-label">Run</span>
+      </button>
+
+      <button id="stopBtn" class="action-btn" title="Stop execution">
+        <i data-lucide="square"></i>
+        <span class="btn-label">Stop</span>
+      </button>
+      
+      <button id="resetBtn" class="icon-btn" title="Reset Flowchart">
+        <i data-lucide="refresh-cw"></i>
+      </button>
+
+      <button id="themeToggle" class="icon-btn" aria-label="Toggle dark/light mode" title="Toggle theme">
+        <i data-lucide="moon" id="moonIcon"></i>
+        <i data-lucide="sun" id="sunIcon" class="hidden"></i>
+      </button>
+    </div>
+  </header>
+
+  <nav id="toolbar" class="toolbar" role="navigation" aria-label="Toolbar">
+    <div class="toolbar-group" role="group" aria-label="Tools">
+      <button class="toolbar-btn active" data-tool="select" title="Select (V)"><i data-lucide="mouse-pointer-2"></i></button>
+      <button class="toolbar-btn" data-tool="connector" title="(C)"><i data-lucide="link-2"></i></button>
+      <span class="toolbar-divider"></span>
+
+  <button class="toolbar-btn" data-shape="ellipse" title="Start/End (START, STOP)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <ellipse cx="12" cy="12" rx="8" ry="6"></ellipse>
+    </svg>
+  </button>
+
+  <!-- Hexagon -->
+  <button class="toolbar-btn" data-shape="hexagon" title="Declare/Init (DECLARE, INIT)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="6 3 18 3 22 12 18 21 6 21 2 12"></polygon>
+    </svg>
+  </button>
+
+  <!-- Parallelogram -->
+  <button class="toolbar-btn" data-shape="parallelogram" title="Input/Output (INPUT, PRINT)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="7 4 21 4 17 20 3 20 7 4"></polygon>
+    </svg>
+  </button>
+
+  <!-- Rectangle -->
+  <button class="toolbar-btn" data-shape="rect" title="Process (SET, LET)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+    </svg>
+  </button>
+
+  <!-- Diamond -->
+  <button class="toolbar-btn" data-shape="diamond" title="Decision (IF, WHILE)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="12 2 22 12 12 22 2 12 12 2"></polygon>
+    </svg>
+  </button>
+    </div>
+
+    <div class="toolbar-group" role="group" aria-label="Edit">
+      <button id="undoBtn" class="toolbar-btn" title="Undo (Ctrl+Z)"><i data-lucide="undo-2"></i></button>
+      <button id="redoBtn" class="toolbar-btn" title="Redo (Ctrl+Y)"><i data-lucide="redo-2"></i></button>
+      <span class="toolbar-divider"></span>
+      <button id="deleteBtn" class="toolbar-btn" title="Delete (Del)"><i data-lucide="trash-2"></i></button>
+    </div>
+
+    <div class="toolbar-group toolbar-right" role="group" aria-label="View">
+      <button id="zoomOutBtn" class="toolbar-btn" title="Zoom Out"><i data-lucide="zoom-out"></i></button>
+      <button id="zoomResetBtn" class="zoom-display">100%</button>
+      <button id="zoomInBtn" class="toolbar-btn" title="Zoom In"><i data-lucide="zoom-in"></i></button>
+      <button id="fitScreenBtn" class="toolbar-btn" title="Fit to Screen"><i data-lucide="maximize-2"></i></button>
+    </div>
+  </nav>
+
+  <main class="main-grid" role="main">
+    <section id="editorPanel" class="panel editor">
+      <div id="canvas-container" class="canvas-container" tabindex="0" aria-label="Flowchart canvas">
+        <svg id="canvas" class="canvas-svg" preserveAspectRatio="xMidYMid meet">
+          <title>Flowchart canvas</title>
+          <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="var(--connector)" />
+            </marker>
+            <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="var(--accent)" />
+            </marker>
+          </defs>
+          
+          <g id="guides-layer"></g>
+          
+          <g id="canvas-group"></g>
+          <g id="handles-layer"></g>
+          
+          <g id="temp-layer"></g>
+        </svg>
+      </div>
+
+      <div class="quick-actions">
+        <button class="quick-btn" data-shape="rect" title="Add Process">+</button>
+      </div>
+    </section>
+
+    <aside id="terminalPanel" class="panel terminal">
+      <header class="terminal-header">
+        <h2 class="terminal-title">Terminal</h2>
+        <div class="terminal-controls">
+          <button id="clearTerminal" class="icon-btn" title="Clear"><i data-lucide="trash"></i></button>
+        </div>
+      </header>
+      <div id="terminal" class="terminal-output" role="log" aria-live="polite"></div>
+    </aside>
+  </main>
+
+  <div id="shapeEditorModal" class="modal hidden" role="dialog" aria-labelledby="modalTitle">
+    <div class="modal-panel">
+      <h3 id="modalTitle">Edit Shape</h3>
+      <textarea id="shapeTextInput" rows="6" placeholder="Enter pseudocode... (e.g., SET a = 5)"></textarea>
+      <div class="modal-actions">
+        <button id="cancelEditBtn" class="btn-secondary">Cancel</button>
+        <button id="saveEditBtn" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script defer src="script.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      document.documentElement.classList.remove('no-js');
+    });
+  </script>
+</body>
+</html>
