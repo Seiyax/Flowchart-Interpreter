@@ -3,6 +3,7 @@
    (FEAT: Auto-Sizing Shapes, Fixed Text Wrap, Modal Labels, Ctrl+Zoom)
    (MODS: Connector Edit, Copy/Paste, Ctrl+Z/Y/C/V, Offset Ports, Auto-Width, Max-Width, Char-Wrap, Single Port Out, Modal Lag Fix, Interpreter Fix)
    (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch Fixes, Long-Press-to-Drag)
+   (FIX: Mobile Double-Tap Edit, Fullscreen Terminal)
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -538,6 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
     resizeStart: null,
     resizeStartShape: null,
     flow: null,
+    lastTap: { time: 0, target: null }, // MODIFICATION: For double-tap
 
     init() {
       this.flow = new Flowchart();
@@ -546,6 +548,8 @@ document.addEventListener('DOMContentLoaded', () => {
       this.bindModalEvents();
       this.bindGlobalEvents();
       this.updateToolbar();
+
+      if (window.lucide) window.lucide.createIcons();
     },
 
     bindCanvasEvents() {
@@ -816,8 +820,24 @@ document.addEventListener('DOMContentLoaded', () => {
       runBtn.addEventListener('click', () => interpreter.startRun());
       stopBtn.addEventListener('click', () => interpreter.stopRun());
       resetBtn.addEventListener('click', () => this.flow.resetToDefault());
-      clearTerminalBtn.addEventListener('click', () => interpreter.clearTerminal());
       themeToggle.addEventListener('click', () => this.toggleTheme());
+      
+      // --- ADD/VERIFY THIS BLOCK ---
+      
+      // Listener for the 'Delete' (Clear) button
+      // Listener for the 'Delete' (Clear) button
+      clearTerminalBtn.addEventListener('click', () => interpreter.clearTerminal());
+
+      // Listener for the 'X' (Close) button
+      const closeTerminalBtn = $('#closeTerminalBtn');
+      if (closeTerminalBtn) {
+        closeTerminalBtn.addEventListener('click', () => {
+          const mainGrid = $('.main-grid');
+          terminalPanel.classList.add('hidden'); // Hide the terminal
+          mainGrid.classList.add('terminal-closed'); // Add state class to parent
+        });
+      }
+      // END MODIFICATION
       
       document.addEventListener('keydown', e => {
         if (modal.classList.contains('hidden') && document.activeElement.tagName !== 'INPUT') {
@@ -1767,8 +1787,20 @@ document.addEventListener('DOMContentLoaded', () => {
         this.longPressTimer = null;
         const shapeG = e.target.closest('.flowchart-shape');
         if (shapeG) {
-          this.flow.select(shapeG.dataset.shapeId, false);
-          this.renderHandles();
+          // --- MODIFICATION: Double-Tap to Edit ---
+          const shapeId = shapeG.dataset.shapeId;
+          const now = Date.now();
+          if (now - this.lastTap.time < 300 && this.lastTap.target === shapeId) {
+            // Double-tap
+            this.editShape(e, shapeId);
+            this.lastTap = { time: 0, target: null }; // Reset
+          } else {
+            // First tap
+            this.lastTap = { time: now, target: shapeId };
+            this.flow.select(shapeId, false);
+            this.renderHandles();
+          }
+          // --- END MODIFICATION ---
         }
       }
 
@@ -1874,11 +1906,8 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     
     clearTerminal() {
+      // ONLY clear the text
       terminal.innerHTML = '';
-      // Hide terminal on mobile when user clears it, *unless* we are running
-      if (window.innerWidth <= 1024 && !isRunning) { 
-        terminalPanel.classList.add('hidden-mobile');
-      }
     },
     
     evalExpr(expr) {
@@ -1922,14 +1951,26 @@ document.addEventListener('DOMContentLoaded', () => {
     
     async startRun() {
       if (isRunning) return;
-      isRunning = true; // <-- MOVED TO TOP
-          
-      terminalPanel.classList.remove('hidden-mobile'); // Show the terminal
+      isRunning = true; 
+      
+      const mainGrid = $('.main-grid'); // Find the parent
+
+      // Show the terminal on all screens
+      terminalPanel.classList.remove('hidden-mobile'); // Removes mobile default-hide
+      terminalPanel.classList.remove('hidden'); // Removes user-hidden class
+      mainGrid.classList.remove('terminal-closed'); // <-- ADD THIS
+      
+      // Handle mobile fullscreen
+      // Handle mobile fullscreen
+      if (window.innerWidth <= 1024) {
+        // Ensure icons are drawn
+        if (window.lucide) window.lucide.createIcons();
+      }
       
       const startShape = ui.flow.getStartShape();
       if (!startShape) {
         this.appendLine("Cannot find START shape.", "error");
-        this.stopRun(); // Need to call stopRun to reset state
+        this.stopRun(); 
         return;
       }
       
@@ -1997,14 +2038,12 @@ document.addEventListener('DOMContentLoaded', () => {
       ui.flow.activeConnector = null; 
       ui.flow.render();
 
+
       if (terminal.querySelector('.input-field')) {
         this.appendLine("Execution stopped by user.", "system");
       }
       
-      // Hide terminal on mobile when run finishes/stops
-      if (window.innerWidth <= 1024) {
-        terminalPanel.classList.add('hidden-mobile');
-      }
+      // (We already removed the code that hides it)
     },
     
     async executeShape(shape) {
