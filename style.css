@@ -264,22 +264,36 @@ button { border: none; background: none; cursor: pointer; font: inherit; color: 
 [data-dir="e"], [data-dir="w"] { cursor: ew-resize; }
 
 
-/* --- MODIFICATION: Responsive Rules --- */
-
 /* Tablet layout */
 @media (max-width: 1024px) {
   .main-grid { 
     flex-direction: column; 
-    /* The fixed height is no longer needed */
   }
+  /* THIS IS THE NEW RULE */
+  .main-grid.terminal-closed .editor {
+    flex-grow: 1; /* Allows it to grow */
+    flex-basis: 100%;
+    height: 100%;
+  }
+
+  /* THIS RULE IS NEW */
+  .main-grid .editor {
+    /* Override flex: 1 from desktop.
+       This means: flex-grow: 0, flex-shrink: 0, flex-basis: 50% */
+    flex: 0 0 50%;
+    height: 50%;
+  }
+
+  /* THIS RULE IS UPDATED */
   .terminal { 
     width: 100%; 
-    height: 40%; 
-    flex-basis: 40%; /* Use flex-basis for height */
+    /* This means: flex-grow: 0, flex-shrink: 0, flex-basis: 50% */
+    flex: 0 0 50%; 
+    height: 50%;
     border-left: none; 
     border-top: 1px solid var(--border); 
-    flex-shrink: 0;
   }
+  
   .quick-actions { 
     display: none; 
   }
@@ -326,18 +340,30 @@ button { border: none; background: none; cursor: pointer; font: inherit; color: 
     width: 2.2rem; /* Make all buttons slightly smaller */
     height: 2.2rem;
   }
-  /* Hide less-critical view buttons on small screens */
-  #fitScreenBtn, #zoomResetBtn {
-    display: none;
-  }
+
 
   /* Layout */
+/* Layout */
   .main-grid {
-    /* The fixed height is no longer needed */
+    /* This is fine */
   }
+  /* THIS IS THE NEW RULE, REPEATED */
+  .main-grid.terminal-closed .editor {
+    flex-grow: 1; /* Allows it to grow */
+    flex-basis: 100%;
+    height: 100%;
+  }
+  
+  
+  /* THIS IS THE FIX for 50/50 on phones */
+  .main-grid .editor {
+    flex: 0 0 50%;
+    height: 50%;
+  }
+
   .terminal {
-    height: 35%; /* Give a bit less space to terminal on small phones */
-    flex-basis: 35%;
+    flex: 0 0 50%;
+    height: 50%;
   }
 
   /* Modal */
