@@ -3,7 +3,7 @@
    (FEAT: Auto-Sizing Shapes, Fixed Text Wrap, Modal Labels, Ctrl+Zoom)
    (MODS: Connector Edit, Copy/Paste, Ctrl+Z/Y/C/V, Offset Ports, Auto-Width, Max-Width, Char-Wrap, Single Port Out, Modal Lag Fix, Interpreter Fix)
    (PLUS: Hybrid Connectors, Modal Crash Fix, Routing Fix, Flow Animation, Simple Ports, Auto-revert Tool, Mobile Touch Fixes, Long-Press-to-Drag)
-   (FIX: Mobile Double-Tap Edit, Fullscreen Terminal)
+   (*** UPDATED: Full Logical/Relational Operator Support ***)
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -515,6 +515,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             return conn ? this.getShape(conn.to.id) : null;
         }
+        // --- UPDATED: Allow only one connector out from non-diamond shapes ---
+        if (connectors.length > 1) {
+            throw new Error(`Execution error: Shape "${shape.text}" (type: ${shape.type}) has multiple output connectors. Only 'diamond' shapes can have more than one output.`);
+        }
         return connectors[0] ? this.getShape(connectors[0].to.id) : null;
     }
   }
@@ -539,7 +543,8 @@ document.addEventListener('DOMContentLoaded', () => {
     resizeStart: null,
     resizeStartShape: null,
     flow: null,
-    lastTap: { time: 0, target: null }, // MODIFICATION: For double-tap
+    lastTouch: null, // For drag loop
+    dragRaf: null,   // For drag loop
 
     init() {
       this.flow = new Flowchart();
@@ -548,8 +553,6 @@ document.addEventListener('DOMContentLoaded', () => {
       this.bindModalEvents();
       this.bindGlobalEvents();
       this.updateToolbar();
-
-      if (window.lucide) window.lucide.createIcons();
     },
 
     bindCanvasEvents() {
@@ -820,24 +823,8 @@ document.addEventListener('DOMContentLoaded', () => {
       runBtn.addEventListener('click', () => interpreter.startRun());
       stopBtn.addEventListener('click', () => interpreter.stopRun());
       resetBtn.addEventListener('click', () => this.flow.resetToDefault());
-      themeToggle.addEventListener('click', () => this.toggleTheme());
-      
-      // --- ADD/VERIFY THIS BLOCK ---
-      
-      // Listener for the 'Delete' (Clear) button
-      // Listener for the 'Delete' (Clear) button
       clearTerminalBtn.addEventListener('click', () => interpreter.clearTerminal());
-
-      // Listener for the 'X' (Close) button
-      const closeTerminalBtn = $('#closeTerminalBtn');
-      if (closeTerminalBtn) {
-        closeTerminalBtn.addEventListener('click', () => {
-          const mainGrid = $('.main-grid');
-          terminalPanel.classList.add('hidden'); // Hide the terminal
-          mainGrid.classList.add('terminal-closed'); // Add state class to parent
-        });
-      }
-      // END MODIFICATION
+      themeToggle.addEventListener('click', () => this.toggleTheme());
       
       document.addEventListener('keydown', e => {
         if (modal.classList.contains('hidden') && document.activeElement.tagName !== 'INPUT') {
@@ -962,7 +949,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show ports AND resize handles on selected shape
             const id = [...this.flow.selected][0];
             const shape = this.flow.getShape(id);
-            if (!shape) return;
+            if (!shape || shape.type === 'connector') return; // Don't render for connectors
             
             this.renderPortsForShape(shape);
             this.renderResizeHandlesForShape(shape);
@@ -1418,144 +1405,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- REVISED: Touch Handler Functions (Fix for Long-Press-to-Drag) ---
     
     onTouchStart(e) {
-        if (isRunning) return;
-
-        // --- 1. Handle Pinch-to-Zoom ---
-        if (e.touches.length === 2) {
-            e.preventDefault();
-            this.isPinching = true;
-            this.dragging = false; 
-            this.panning = false;
-            // Clear any pending long press
-            if (this.longPressTimer) clearTimeout(this.longPressTimer);
-            this.longPressTimer = null;
-            this.touchStartTarget = null;
-            
-            this.lastPinchDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            
-            if (this.connectorStart) {
-                this.connectorStart = null;
-                tempLayer.innerHTML = '';
-                this.tool = 'select';
-                this.updateToolbar();
-                this.renderHandles();
-            }
-            return;
-        } 
-        
-        // --- 2. Handle One-Finger Touch ---
-        if (e.touches.length === 1) {
-            const touch = e.touches[0];
-            const targetEl = e.target;
-            
-            // Priority 1: Connector Port (Drag/Tap Start)
-            const port = targetEl.closest('.connector-port');
-            if (port) {
-                e.preventDefault(); // Stop scroll
-                this.panning = false;
-                
-                if (this.tool === 'connector') {
-                    // We are in click-click mode. Let touchend handle the click.
-                } else {
-                    // Start a drag-to-connect
-                    this.isPortDragging = true;
-                    this.connectorStart = { id: port.dataset.shapeId, port: port.dataset.port };
-                    this.drawTempConnector(touch);
-                }
-                return;
-            }
-            
-            // Priority 2: Resize Handle (Drag)
-            const handle = targetEl.closest('.resize-handle');
-            if (handle) {
-                e.preventDefault(); // Stop scroll
-                this.panning = false;
-                this.resizing = true;
-                this.resizeHandle = handle.dataset.dir;
-                this.resizeStart = this.getPoint(touch);
-                const shape = this.flow.getShape([...this.flow.selected][0]);
-                if (shape) this.resizeStartShape = { ...shape };
-                return;
-            }
-            
-            // Priority 3: Shape Body (Long Press to Drag, Tap to Select)
-            const shape = targetEl.closest('.flowchart-shape');
-            if (shape) {
-                e.preventDefault(); // Stop scroll AND mousedown simulation
-                this.panning = false;
-                this.touchStartTarget = { touch, shapeId: shape.dataset.shapeId, x: touch.clientX, y: touch.clientY };
-
-          this.longPressTimer = setTimeout(() => {
-    if (!this.touchStartTarget) return;
-
-    const { touch, shapeId } = this.touchStartTarget;
-
-    // Vibrate
-    if (navigator.vibrate) navigator.vibrate(30);
-
-    this.dragging = true;
-    this.dragShapeId = shapeId;
-
-    // Select shape
-    this.onShapeMouseDown(touch, shapeId);
-
-    // ✅ Calculate drag offset based on touch → SVG coordinates
-    const pt = this.getPoint(touch);
-    const shape = this.flow.getShape(shapeId);
-    this.dragOffset = { 
-        x: pt.x - shape.x, 
-        y: pt.y - shape.y 
-    };
-
-    this.touchStartTarget = null;
-    this.longPressTimer = null;
-}, 350);
-
-
-
-                return;
-            }
-            
-            // Priority 4: Connector Line (Tap to Select)
-            const conn = targetEl.closest('.connector-group');
-            if (conn && conn.dataset.connId) {
-                e.preventDefault(); // Stop scroll
-                this.panning = false;
-                this.flow.select(conn.dataset.connId, false);
-                return;
-            }
-            
-            // Priority 5: Background (Tap to add shape or Pan)
-            if (this.tool === 'shape') {
-                // Tapped the background to add a shape. Let browser simulate mousedown.
-                // We MUST NOT prevent default, or mousedown won't fire.
-                this.panning = false;
-                return;
-            }
-
-            // Priority 6: Background (Pan)
-            e.preventDefault(); // Prevent page scroll
-            this.panning = true;
-            this.dragging = false;
-            this.resizing = false;
-            this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
-            
-            if (this.flow.selected.size > 0) {
-                this.flow.selected.clear();
-                this.flow.render();
-                this.renderHandles();
-            }
-        }
-    },
-
-        // ─────────────────────────────────────────────────────────────────────
-    //  FULLY WORKING: Long-Press Drag + Connector Click + Resize
-    // ─────────────────────────────────────────────────────────────────────
-
-    onTouchStart(e) {
       if (isRunning) return;
 
       // 2-FINGER PINCH
@@ -1656,7 +1505,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // 5. PAN
-      if (this.tool === 'shape') return;
+      if (this.tool === 'shape') return; // Let it fall through to onMouseDown
       e.preventDefault();
       this.panning = true;
       this.panStart = { x: touch.clientX - this.flow.view.x, y: touch.clientY - this.flow.view.y };
@@ -1723,6 +1572,7 @@ document.addEventListener('DOMContentLoaded', () => {
         this.flow.view.zoom = newZoom;
 
         this.flow.render();
+        this.renderHandles(); // Re-render handles on zoom
         return;
       }
 
@@ -1741,17 +1591,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const dx = pt.x - this.resizeStart.x;
         const dy = pt.y - this.resizeStart.y;
         const dir = this.resizeHandle;
+        
+        let { x, y, w, h } = this.resizeStartShape;
 
-        if (dir.includes('right')) shape.w = Math.max(MIN_SHAPE_SIZE, this.resizeStartShape.w + dx);
-        if (dir.includes('bottom')) shape.h = Math.max(MIN_SHAPE_SIZE, this.resizeStartShape.h + dy);
-        if (dir.includes('left')) {
-          shape.w = Math.max(MIN_SHAPE_SIZE, this.resizeStartShape.w - dx);
-          shape.x = this.resizeStartShape.x + dx;
+        if (dir.includes('e')) w = Math.max(MIN_SHAPE_SIZE, w + dx);
+        if (dir.includes('s')) h = Math.max(MIN_SHAPE_SIZE, h + dy);
+        if (dir.includes('w')) {
+            w = Math.max(MIN_SHAPE_SIZE, w - dx);
+            x = this.resizeStartShape.x + dx;
         }
-        if (dir.includes('top')) {
-          shape.h = Math.max(MIN_SHAPE_SIZE, this.resizeStartShape.h - dy);
-          shape.y = this.resizeStartShape.y + dy;
+        if (dir.includes('n')) {
+            h = Math.max(MIN_SHAPE_SIZE, h - dy);
+            y = this.resizeStartShape.y + dy;
         }
+        
+        // Prevent inverting
+        if (w < MIN_SHAPE_SIZE) {
+            if (dir.includes('w')) x = this.resizeStartShape.x + this.resizeStartShape.w - MIN_SHAPE_SIZE;
+            w = MIN_SHAPE_SIZE;
+        }
+        if (h < MIN_SHAPE_SIZE) {
+            if (dir.includes('n')) y = this.resizeStartShape.y + this.resizeStartShape.h - MIN_SHAPE_SIZE;
+            h = MIN_SHAPE_SIZE;
+        }
+
+        shape.x = x; shape.y = y; shape.w = w; shape.h = h;
 
         this.flow.render();
         this.renderHandles();
@@ -1763,6 +1627,13 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         return;
       }
+      
+      // DRAG-TO-CONNECT
+      if (this.isPortDragging && this.connectorStart) {
+          e.preventDefault();
+          this.drawTempConnector(touch);
+          return;
+      }
 
       // PAN
       if (this.panning) {
@@ -1773,38 +1644,27 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
 
-    onTouchEnd(e) {
+    async onTouchEnd(e) {
       if (isRunning) return;
 
       if (this.isPinching && e.touches.length < 2) {
         this.isPinching = false;
         this.lastPinchDist = null;
       }
-
-      // TAP ON SHAPE (short press)
+      
+      // Clear long press if it was just a tap
       if (this.longPressTimer) {
         clearTimeout(this.longPressTimer);
         this.longPressTimer = null;
+        // This was a TAP on a shape
         const shapeG = e.target.closest('.flowchart-shape');
         if (shapeG) {
-          // --- MODIFICATION: Double-Tap to Edit ---
-          const shapeId = shapeG.dataset.shapeId;
-          const now = Date.now();
-          if (now - this.lastTap.time < 300 && this.lastTap.target === shapeId) {
-            // Double-tap
-            this.editShape(e, shapeId);
-            this.lastTap = { time: 0, target: null }; // Reset
-          } else {
-            // First tap
-            this.lastTap = { time: now, target: shapeId };
-            this.flow.select(shapeId, false);
-            this.renderHandles();
-          }
-          // --- END MODIFICATION ---
+          this.flow.select(shapeG.dataset.shapeId, false);
+          this.renderHandles();
         }
       }
 
-      // PORT TAP
+      // PORT TAP (Click-to-connect)
       const port = e.target.closest('.connector-port');
       if (port && !this.isPortDragging && !this.dragging && !this.resizing && !this.panning) {
         e.preventDefault();
@@ -1816,13 +1676,49 @@ document.addEventListener('DOMContentLoaded', () => {
           this.drawTempConnector(e.changedTouches[0]);
           this.renderHandles();
         } else {
-          this.completeConnection(clicked);
+          await this.completeConnection(clicked);
         }
         return;
+      }
+      
+      // PORT DROP (Drag-to-connect)
+      if (this.isPortDragging && this.connectorStart) {
+          const pt = this.getPoint(e.changedTouches[0]);
+          let target = null;
+          // We can't use e.target on touchend, so we must find the port/shape at the drop coords
+          
+          // Check for port first
+          const droppedOnPort = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY)?.closest('.connector-port');
+          if (droppedOnPort) {
+              target = { id: droppedOnPort.dataset.shapeId, port: droppedOnPort.dataset.port };
+          }
+          
+          // Check for shape body
+          if (!target) {
+              const droppedOnShape = this.flow.shapes.find(s => pt.x >= s.x && pt.x <= s.x + s.w && pt.y >= s.y && pt.y <= s.y + s.h);
+              if (droppedOnShape) {
+                  const anchors = this.flow.getAnchors(droppedOnShape);
+                    let closestPort = 'top';
+                    let minDist = Infinity;
+                    for(const p in anchors) {
+                        const dist = Math.hypot(pt.x - anchors[p].x, pt.y - anchors[p].y);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestPort = p;
+                        }
+                    }
+                    target = { id: droppedOnShape.id, port: closestPort };
+              }
+          }
+          
+          await this.completeConnection(target);
+          this.isPortDragging = false; // Already cleaned up by completeConnection
+          return;
       }
 
       // DROP SHAPE
       if (this.dragging && this.dragShapeId) {
+        this.stopDragLoop();
         const shape = this.flow.getShape(this.dragShapeId);
         if (shape) {
           shape.x = snapToGrid(shape.x);
@@ -1837,19 +1733,20 @@ document.addEventListener('DOMContentLoaded', () => {
           g.style.transform = '';
           g.style.boxShadow = '';
         }
-
+        
+        this.flow.render(); // Full render to fix any artifacts
         this.renderHandles();
-        this.stopDragLoop();
       }
 
       // FINALIZE RESIZE
       if (this.resizing) {
         const shape = this.flow.getShape([...this.flow.selected][0]);
         if (shape) {
-          shape.w = Math.max(MIN_SHAPE_SIZE, Math.round(shape.w / GRID) * GRID);
-          shape.h = Math.max(MIN_SHAPE_SIZE, Math.round(shape.h / GRID) * GRID);
+          shape.w = Math.max(MIN_SHAPE_SIZE, snapToGrid(shape.w));
+          shape.h = Math.max(MIN_SHAPE_SIZE, snapToGrid(shape.h));
           this.flow.save();
         }
+        this.flow.render(); // Full render to fix text
         this.renderHandles();
       }
 
@@ -1873,12 +1770,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const div = document.createElement('div');
       div.className = 'line';
       if (type === 'error') {
-        div.style.color = 'var(--error)';
+        div.style.color = 'var(--danger)'; // Use CSS var
         div.textContent = `Error: ${text}`;
       } else if (type === 'system') {
-        div.style.color = 'var(--accent)';
+        div.style.color = 'var(--accent)'; // Use CSS var
         div.textContent = `=== ${text} ===`;
       } else {
+        div.style.color = 'var(--term-text)'; // Use CSS var
         div.textContent = text;
       }
       terminal.appendChild(div);
@@ -1896,7 +1794,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') {
           const val = input.value;
           div.innerHTML = val;
-          div.style.color = 'var(--success)';
+          div.style.color = 'var(--success)'; // Use CSS var
           input.removeEventListener('keydown', onKey);
           callback(val);
         }
@@ -1906,71 +1804,86 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     
     clearTerminal() {
-      // ONLY clear the text
       terminal.innerHTML = '';
+      // Hide terminal on mobile when user clears it, *unless* we are running
+      if (window.innerWidth <= 1024 && !isRunning) { 
+        terminalPanel.classList.add('hidden-mobile');
+      }
     },
     
+    // --- *** THIS IS THE UPDATED FUNCTION *** ---
     evalExpr(expr) {
       if (expr === undefined || expr === null) return undefined;
       let tempExpr = String(expr).trim();
+      
+      // Match string/char literals first
       const stringMatch = tempExpr.match(/^"((?:\\.|[^"\\])*)"$/);
       if (stringMatch) return stringMatch[1].replace(/\\(.)/g, '$1');
       const stringMatch2 = tempExpr.match(/^'((?:\\.|[^'\\])*)'$/);
       if (stringMatch2) return stringMatch2[1].replace(/\\(.)/g, '$1');
+
+      // It's not a simple string, so we process it
       let placeholders = [];
+      
+      // Store all string/char literals to protect them from replacement
       tempExpr = tempExpr.replace(/("(\\.|[^"\\])*"|'(\\.|[^'\\])*')/g, (match) => {
         placeholders.push(match);
         return `__PLACEHOLDER_${placeholders.length - 1}__`;
       });
+
+      // Replace variables with their values
       tempExpr = tempExpr.replace(/\b([A-Za-z_]\w*)\b/g, (m) => {
         if (variables.hasOwnProperty(m)) {
           const val = variables[m];
-          if (val === null) throw new Error(`Variable "${m}" was DECLARED but not given a value.`);
-          if (typeof val === 'string') return JSON.stringify(val);
+          // --- FIX: Use 'null' for uninitialized (null) variables ---
+          if (val === null) return 'null'; 
+          if (typeof val === 'string') return JSON.stringify(val); // Add quotes
           return String(val);
         }
+        // Handle TRUE/FALSE/null keywords
         if (/^(TRUE|FALSE|null)$/i.test(m)) return m.toLowerCase();
-        return m;
+        return m; // Keep unrecognized words (could be JS built-ins like Math)
       });
-      tempExpr = tempExpr.replace(/\bAND\b/gi, '&&')
-                         .replace(/\bOR\b/gi, '||')
-                         .replace(/\bNOT\b/gi, '!')
-                         .replace(/\bDIV\b/gi, 'Math.floor')
-                         .replace(/\bMOD\b/gi, '%')
-                         .replace(/<>/g, '!==')
-                         .replace(/(?<![=!<>])=(?!=)/g, '==');
+
+      // --- *** NEW OPERATOR REPLACEMENTS *** ---
+      // Replace all pseudocode operators with their JS equivalents
+      tempExpr = tempExpr
+        .replace(/\bAND\b/gi, '&&')      // Pseudocode AND
+        .replace(/\bOR\b/gi, '||')       // Pseudocode OR
+        .replace(/\bNOT\b/gi, '!')       // Pseudocode NOT
+        .replace(/(?<![<>=!])!(?!=)/g, '!') // C-style NOT (that isn't part of !=)
+        .replace(/\bDIV\b/gi, 'Math.floor') // Integer division
+        .replace(/\bMOD\b/gi, '%')       // Modulus
+        .replace(/<>/g, '!==')            // Pseudocode not equal
+        .replace(/!=/g, '!==')            // C-style not equal
+        .replace(/==/g, '===')           // C-style equal (promote to strict)
+        .replace(/(?<![=!<>])=(?!=)/g, '==='); // Pseudocode single = for comparison
+      // --- *** END NEW REPLACEMENTS *** ---
+
+      // Restore the string/char literals
       tempExpr = tempExpr.replace(/__PLACEHOLDER_(\d+)__/g, (match, index) => {
         return placeholders[index];
       });
+
+      // Evaluate the final JS expression
       try {
         return Function(`"use strict"; return (${tempExpr});`)();
       } catch (e) {
         throw new Error(`Invalid expression "${expr}". Failed to evaluate: ${e.message}`);
       }
     },
+    // --- *** END OF UPDATED FUNCTION *** ---
     
     async startRun() {
       if (isRunning) return;
-      isRunning = true; 
-      
-      const mainGrid = $('.main-grid'); // Find the parent
-
-      // Show the terminal on all screens
-      terminalPanel.classList.remove('hidden-mobile'); // Removes mobile default-hide
-      terminalPanel.classList.remove('hidden'); // Removes user-hidden class
-      mainGrid.classList.remove('terminal-closed'); // <-- ADD THIS
-      
-      // Handle mobile fullscreen
-      // Handle mobile fullscreen
-      if (window.innerWidth <= 1024) {
-        // Ensure icons are drawn
-        if (window.lucide) window.lucide.createIcons();
-      }
+      isRunning = true; // <-- MOVED TO TOP
+          
+      terminalPanel.classList.remove('hidden-mobile'); // Show the terminal
       
       const startShape = ui.flow.getStartShape();
       if (!startShape) {
         this.appendLine("Cannot find START shape.", "error");
-        this.stopRun(); 
+        this.stopRun(); // Need to call stopRun to reset state
         return;
       }
       
@@ -2038,12 +1951,14 @@ document.addEventListener('DOMContentLoaded', () => {
       ui.flow.activeConnector = null; 
       ui.flow.render();
 
-
       if (terminal.querySelector('.input-field')) {
         this.appendLine("Execution stopped by user.", "system");
       }
       
-      // (We already removed the code that hides it)
+      // Hide terminal on mobile when run finishes/stops
+      if (window.innerWidth <= 1024) {
+        terminalPanel.classList.add('hidden-mobile');
+      }
     },
     
     async executeShape(shape) {
@@ -2079,18 +1994,44 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (upperLine.startsWith('SET') || upperLine.startsWith('LET') || line.includes('=')) {
           // --- FIX: Corrected Regex from [a-a-zA-Z_] to [a-zA-Z_] ---
           const assignMatch = line.match(/^(?:SET|LET)?\s*([a-zA-Z_]\w*)\s*=\s*(.+)/i);
-          if (!assignMatch) throw new Error(`Invalid assignment syntax: "${line}"`);
-          const varName = assignMatch[1].trim();
-          const expr = assignMatch[2].trim();
-          if (!variables.hasOwnProperty(varName)) throw new Error(`Variable "${varName}" not DECLARED before use.`);
-          variables[varName] = this.evalExpr(expr);
+          if (!assignMatch) {
+            // If it's not an assignment, it might be a condition in a non-diamond shape (error)
+            if (shape.type !== 'diamond') {
+                throw new Error(`Invalid assignment syntax: "${line}"`);
+            }
+            // If it IS a diamond, just evaluate it as a condition
+            decision = this.evalExpr(line);
+          } else {
+            // It IS an assignment
+            const varName = assignMatch[1].trim();
+            const expr = assignMatch[2].trim();
+            if (!variables.hasOwnProperty(varName)) throw new Error(`Variable "${varName}" not DECLARED before use.`);
+            variables[varName] = this.evalExpr(expr);
+          }
         }
         else if (upperLine.startsWith('PRINT') || upperLine.startsWith('OUTPUT') || upperLine.startsWith('DISPLAY')) {
           const rest = line.replace(/^(?:PRINT|OUTPUT|DISPLAY)\s+/i, '');
-          const parts = rest.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+          
+          // --- UPDATED: Use the more robust comma-splitting regex ---
+          const parts = rest.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)(?=(?:(?:[^']*'){2})*[^']*$)/) || [];
+          
           let outputString = "";
           for (const part of parts) {
-              outputString += this.evalExpr(part.trim());
+              const trimmedPart = part.trim();
+              if (trimmedPart) {
+                  
+                  // --- *** THIS IS THE CHANGE *** ---
+                  let value = this.evalExpr(trimmedPart);
+                  
+                  // Check if the value is a number and has decimal places
+                  if (typeof value === 'number' && !Number.isInteger(value)) {
+                      // Format to 2 decimal places
+                      value = value.toFixed(2);
+                  }
+                  
+                  outputString += value; 
+                  // --- *** END OF CHANGE *** ---
+              }
           }
           this.appendLine(outputString, 'info');
         }
