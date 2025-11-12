@@ -1848,15 +1848,17 @@ document.addEventListener('DOMContentLoaded', () => {
       // --- *** NEW OPERATOR REPLACEMENTS *** ---
       // Replace all pseudocode operators with their JS equivalents
       tempExpr = tempExpr
-  .replace(/\bAND\b/gi, '&&')      // Pseudocode AND
-  .replace(/\bOR\b/gi, '||')       // Pseudocode OR
-  .replace(/\bNOT\b/gi, '!')       // Pseudocode NOT
-  .replace(/(?<![<>=!])!(?!=)/g, '!') // C-style NOT (that isn't part of !=)
-  .replace(/\bDIV\b/gi, 'Math.floor') // Integer division
-  .replace(/\bMOD\b/gi, '%')       // Modulus
-  .replace(/<>/g, '!==')            // Pseudocode not equal
-  .replace(/!=/g, '!==')            // C-style not equal
-  .replace(/==/g, '===');          // C-style equal (promote to strict)
+        .replace(/\bAND\b/gi, '&&')      // Pseudocode AND
+        .replace(/\bOR\b/gi, '||')       // Pseudocode OR
+        .replace(/\bNOT\b/gi, '!')       // Pseudocode NOT
+        .replace(/(?<![<>=!])!(?!=)/g, '!') // C-style NOT (that isn't part of !=)
+        .replace(/\bDIV\b/gi, 'Math.floor') // Integer division
+        .replace(/\bMOD\b/gi, '%')       // Modulus
+        .replace(/<>/g, '!==')            // Pseudocode not equal
+        .replace(/!=/g, '!==')            // C-style not equal
+        .replace(/==/g, '===');           // C-style equal (promote to strict)
+        // .replace(/(?<![=!<>])=(?!=)/g, '==='); // <-- THIS LINE IS REMOVED
+      // --- *** END NEW REPLACEMENTS *** ---
 
       // Restore the string/char literals
       tempExpr = tempExpr.replace(/__PLACEHOLDER_(\d+)__/g, (match, index) => {
@@ -1995,7 +1997,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!assignMatch) {
             // If it's not an assignment, it might be a condition in a non-diamond shape (error)
             if (shape.type !== 'diamond') {
-                throw new Error(`Invalid assignment syntax: "${line}"`);
+                // --- UPDATED ERROR MESSAGE ---
+                throw new Error(`Invalid statement. Conditions (like ==, <, >) are only allowed in diamond shapes: "${line}"`);
             }
             // If it IS a diamond, just evaluate it as a condition
             decision = this.evalExpr(line);
@@ -2035,7 +2038,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         else if (upperLine.startsWith('INPUT') || upperLine.startsWith('READ') || upperLine.startsWith('GET')) {
           const varName = line.replace(/^(?:INPUT|READ|GET)\s+/i, '').trim();
-          if (!variables.hasOwnProperty(varName)) throw new Error(`Variable "${varName}" not DECLARED before use.`);
+          if (!variables.hasOwnProperty(varName)) throw new Error(`Variable "${varName}" not DECLALARED before use.`);
           const val = await new Promise(resolve => {
             this.appendInvisiblePrompt(resolve);
           });
@@ -2043,8 +2046,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const numeric = (val !== '' && !isNaN(val) && val.trim() !== '');
           variables[varName] = numeric ? parseFloat(val) : val;
         }
-        // ... (input logic)
-        }
+        // --- UPDATED: 'is' keyword support ---
         else if (shape.type === 'diamond') {
             // --- NEW: Handle "is" keyword ---
             let exprToEvaluate = line.trim(); // Get the line and trim whitespace
@@ -2057,7 +2059,6 @@ document.addEventListener('DOMContentLoaded', () => {
             decision = this.evalExpr(exprToEvaluate); // Evaluate the processed expression
         }
         else {
-// ...
           throw new Error(`Unknown syntax in ${shape.type} shape: "${line}"`);
         }
       }
@@ -2077,5 +2078,3 @@ document.addEventListener('DOMContentLoaded', () => {
     interpreter
   };
 });
-
-
