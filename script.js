@@ -1991,8 +1991,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
         }
-        // --- THIS IS THE FIXED LINE ---
-        else if (upperLine.startsWith('SET') || upperLine.startsWith('LET') || /(?<![=<>!])=(?!=)/.test(line)) {
+        else if (upperLine.startsWith('SET') || upperLine.startsWith('LET') || line.includes('=')) {
           // --- FIX: Corrected Regex from [a-a-zA-Z_] to [a-zA-Z_] ---
           const assignMatch = line.match(/^(?:SET|LET)?\s*([a-zA-Z_]\w*)\s*=\s*(.+)/i);
           if (!assignMatch) {
@@ -2039,7 +2038,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         else if (upperLine.startsWith('INPUT') || upperLine.startsWith('READ') || upperLine.startsWith('GET')) {
           const varName = line.replace(/^(?:INPUT|READ|GET)\s+/i, '').trim();
-          if (!variables.hasOwnProperty(varName)) throw new Error(`Variable "${varName}" not DECLARED before use.`);
+          if (!variables.hasOwnProperty(varName)) throw new Error(`Variable "${varName}" not DECLALARED before use.`);
           const val = await new Promise(resolve => {
             this.appendInvisiblePrompt(resolve);
           });
@@ -2066,6 +2065,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       return ui.flow.getNextShape(shape, decision)?.id;
     }
+  };
 
   // --- Initialize Everything ---
   ui.init();
