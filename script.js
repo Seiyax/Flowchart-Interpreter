@@ -2043,10 +2043,21 @@ document.addEventListener('DOMContentLoaded', () => {
           const numeric = (val !== '' && !isNaN(val) && val.trim() !== '');
           variables[varName] = numeric ? parseFloat(val) : val;
         }
+        // ... (input logic)
+        }
         else if (shape.type === 'diamond') {
-            decision = this.evalExpr(line);
+            // --- NEW: Handle "is" keyword ---
+            let exprToEvaluate = line.trim(); // Get the line and trim whitespace
+            if (exprToEvaluate.toUpperCase().startsWith('IS ')) {
+                // If it starts with "is", cut that part off
+                exprToEvaluate = exprToEvaluate.substring(3).trim(); 
+            }
+            // --- END NEW ---
+            
+            decision = this.evalExpr(exprToEvaluate); // Evaluate the processed expression
         }
         else {
+// ...
           throw new Error(`Unknown syntax in ${shape.type} shape: "${line}"`);
         }
       }
@@ -2066,4 +2077,5 @@ document.addEventListener('DOMContentLoaded', () => {
     interpreter
   };
 });
+
 
