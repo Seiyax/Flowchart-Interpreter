@@ -1991,48 +1991,48 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
         }
-        // --- THIS IS THE FIXED LINE ---
-        else if (upperLine.startsWith('SET') || upperLine.startsWith('LET') || /(?<![=<>!])=(?!=)/.test(line)) {
-          // --- FIX: Corrected Regex from [a-a-zA-Z_] to [a-zA-Z_] ---
-          const assignMatch = line.match(/^(?:SET|LET)?\s*([a-zA-Z_]\w*)\s*=\s*(.+)/i);
-          if (!assignMatch) {
-            // If it's not an assignment, it might be a condition in a non-diamond shape (error)
-            if (shape.type !== 'diamond') {
-                // --- UPDATED ERROR MESSAGE ---
-                throw new Error(`Invalid statement. Conditions (like ==, <, >) are only allowed in diamond shapes: "${line}"`);
+        // --- *** FIX: Moved all diamond logic to be FIRST *** ---
+        else if (shape.type === 'diamond') {
+            let exprToEvaluate = line.trim(); 
+            if (exprToEvaluate.toUpperCase().startsWith('IS ')) {
+                exprToEvaluate = exprToEvaluate.substring(3).trim(); 
             }
-            // If it IS a diamond, just evaluate it as a condition
-            decision = this.evalExpr(line);
-          } else {
+            
+            // --- NEW: Add a helpful error for the exact mistake you made ---
+            if (exprToEvaluate.includes('=') && !exprToEvaluate.includes('==') && !exprToEvaluate.includes('!=') && !exprToEvaluate.includes('<=')) {
+               throw new Error(`Syntax error in diamond: Use "==" for comparison, not "=". Found: "${line}"`);
+            }
+            
+            decision = this.evalExpr(exprToEvaluate);
+        }
+        // --- END FIX ---
+        else if (upperLine.startsWith('SET') || upperLine.startsWith('LET') || line.includes('=')) {
+          // This block now *only* handles assignments
+          const assignMatch = line.match(/^(?:SET|LET)?\s*([a-zA-Z_]\w*)\s*=\s*(.+)/i);
+          if (assignMatch) {
             // It IS an assignment
             const varName = assignMatch[1].trim();
             const expr = assignMatch[2].trim();
             if (!variables.hasOwnProperty(varName)) throw new Error(`Variable "${varName}" not DECLARED before use.`);
             variables[varName] = this.evalExpr(expr);
+          } else {
+            // It had an '=' but wasn't a valid assignment
+             throw new Error(`Invalid assignment syntax in ${shape.type} shape: "${line}"`);
           }
         }
         else if (upperLine.startsWith('PRINT') || upperLine.startsWith('OUTPUT') || upperLine.startsWith('DISPLAY')) {
           const rest = line.replace(/^(?:PRINT|OUTPUT|DISPLAY)\s+/i, '');
-          
-          // --- UPDATED: Use the more robust comma-splitting regex ---
           const parts = rest.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)(?=(?:(?:[^']*'){2})*[^']*$)/) || [];
           
           let outputString = "";
           for (const part of parts) {
               const trimmedPart = part.trim();
               if (trimmedPart) {
-                  
-                  // --- *** THIS IS THE CHANGE *** ---
                   let value = this.evalExpr(trimmedPart);
-                  
-                  // Check if the value is a number and has decimal places
                   if (typeof value === 'number' && !Number.isInteger(value)) {
-                      // Format to 2 decimal places
                       value = value.toFixed(2);
                   }
-                  
                   outputString += value; 
-                  // --- *** END OF CHANGE *** ---
               }
           }
           this.appendLine(outputString, 'info');
@@ -2046,18 +2046,6 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!isRunning) return null;
           const numeric = (val !== '' && !isNaN(val) && val.trim() !== '');
           variables[varName] = numeric ? parseFloat(val) : val;
-        }
-        // --- UPDATED: 'is' keyword support ---
-        else if (shape.type === 'diamond') {
-            // --- NEW: Handle "is" keyword ---
-            let exprToEvaluate = line.trim(); // Get the line and trim whitespace
-            if (exprToEvaluate.toUpperCase().startsWith('IS ')) {
-                // If it starts with "is", cut that part off
-                exprToEvaluate = exprToEvaluate.substring(3).trim(); 
-            }
-            // --- END NEW ---
-            
-            decision = this.evalExpr(exprToEvaluate); // Evaluate the processed expression
         }
         else {
           throw new Error(`Unknown syntax in ${shape.type} shape: "${line}"`);
@@ -2079,5 +2067,6 @@ document.addEventListener('DOMContentLoaded', () => {
     interpreter
   };
 });
+
 
 
