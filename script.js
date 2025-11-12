@@ -1848,17 +1848,15 @@ document.addEventListener('DOMContentLoaded', () => {
       // --- *** NEW OPERATOR REPLACEMENTS *** ---
       // Replace all pseudocode operators with their JS equivalents
       tempExpr = tempExpr
-        .replace(/\bAND\b/gi, '&&')      // Pseudocode AND
-        .replace(/\bOR\b/gi, '||')       // Pseudocode OR
-        .replace(/\bNOT\b/gi, '!')       // Pseudocode NOT
-        .replace(/(?<![<>=!])!(?!=)/g, '!') // C-style NOT (that isn't part of !=)
-        .replace(/\bDIV\b/gi, 'Math.floor') // Integer division
-        .replace(/\bMOD\b/gi, '%')       // Modulus
-        .replace(/<>/g, '!==')            // Pseudocode not equal
-        .replace(/!=/g, '!==')            // C-style not equal
-        .replace(/==/g, '===')           // C-style equal (promote to strict)
-        .replace(/(?<![=!<>])=(?!=)/g, '==='); // Pseudocode single = for comparison
-      // --- *** END NEW REPLACEMENTS *** ---
+  .replace(/\bAND\b/gi, '&&')      // Pseudocode AND
+  .replace(/\bOR\b/gi, '||')       // Pseudocode OR
+  .replace(/\bNOT\b/gi, '!')       // Pseudocode NOT
+  .replace(/(?<![<>=!])!(?!=)/g, '!') // C-style NOT (that isn't part of !=)
+  .replace(/\bDIV\b/gi, 'Math.floor') // Integer division
+  .replace(/\bMOD\b/gi, '%')       // Modulus
+  .replace(/<>/g, '!==')            // Pseudocode not equal
+  .replace(/!=/g, '!==')            // C-style not equal
+  .replace(/==/g, '===');          // C-style equal (promote to strict)
 
       // Restore the string/char literals
       tempExpr = tempExpr.replace(/__PLACEHOLDER_(\d+)__/g, (match, index) => {
@@ -2068,3 +2066,4 @@ document.addEventListener('DOMContentLoaded', () => {
     interpreter
   };
 });
+
